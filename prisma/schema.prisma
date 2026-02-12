@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id String @id @default(cuid())
+  username String @unique
+  password String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Maquina {
+  id        String   @id @default(cuid())
+  nome      String
+  custoHora Float
+  ativa     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Material {
+  id        String   @id @default(cuid())
+  nome      String
+  precoMm2   Float
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Cliente {
+  id          String   @id @default(cuid())
+  nome        String
+  cpfCnpj     String?
+  telefone    String
+  email       String
+  endereco    String?
+  observacoes String?
+  ativo       Boolean  @default(true)
+  
+  orcamentos  Orcamento[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Orcamento {
+  id              String   @id @default(cuid())
+  clienteId        String?
+  cliente          Cliente?  @relation(fields: [clienteId], references: [id])
+  descricao       String?  
+  itensDetalhados String?  
+  subtotal        Float   
+  margemLucro     Float    @default(30) 
+  gastosAdicionais Float   @default(0)
+  valorFinal      Float    
+  status          String   @default("Pendente")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  pedido          Pedido?
+}
+
+model Pedido {
+  id           String    @id @default(cuid())
+  orcamentoId  String    @unique
+  orcamento    Orcamento @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
+  cliente      String
+  valor        Float
+  dataEntrega  DateTime
+  status       String    @default("Pendente")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
