@@ -873,17 +873,16 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 			title="PDF resumido para enviar ao cliente"
 		>
 			<Icon icon="lucide:file-text" />
-			PDF Simples
+			<span class="btn-label">PDF Simples</span>
 		</button>
 		<button
-			class="btn-export"
+			class="btn-export btn-export-completo"
 			onclick={() => gerarPDFCompleto()}
 			disabled={itens.length === 0}
 			title="PDF detalhado para controle interno"
-			style="background-color: #3b82f6;"
 		>
 			<Icon icon="lucide:file-check" />
-			PDF Completo
+			<span class="btn-label">PDF Completo</span>
 		</button>
 		<button class="btn-secondary" onclick={limparTudo}>
 			<Icon icon="lucide:trash-2" />
@@ -1318,6 +1317,8 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 	margin-bottom: 24px;
 	padding-bottom: 16px;
 	border-bottom: 2px solid rgba(255, 191, 145, 0.2);
+	flex-wrap: wrap;
+	gap: 12px;
 }
 
 .header-content {
@@ -1343,6 +1344,7 @@ h1 {
 	display: flex;
 	gap: 10px;
 	align-items: center;
+	flex-wrap: wrap;
 }
 
 .input-nome-pdf {
@@ -1362,6 +1364,16 @@ h1 {
 .input-nome-pdf:focus {
 	outline: none;
 	border-color: #ffbf91;
+}
+
+.btn-export-completo {
+	background: rgba(59, 130, 246, 0.2) !important;
+	border-color: rgba(59, 130, 246, 0.4) !important;
+}
+
+.btn-export-completo:hover:not(:disabled) {
+	background: rgba(59, 130, 246, 0.35) !important;
+	border-color: #60a5fa !important;
 }
 
 .btn-export {
@@ -1979,6 +1991,31 @@ textarea {
 @media (max-width: 1200px) {
 	.content-grid {
 		grid-template-columns: 1fr;
+	}
+}
+
+@media (max-width: 768px) {
+	.page-header {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+
+	.header-actions {
+		width: 100%;
+	}
+
+	.input-nome-pdf {
+		flex: 1;
+		min-width: 0;
+		width: auto;
+	}
+
+	.btn-label {
+		display: none;
+	}
+
+	.btn-export {
+		padding: 10px 12px;
 	}
 }
 
