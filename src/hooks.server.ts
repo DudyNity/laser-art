@@ -3,29 +3,42 @@ import { redirect } from '@sveltejs/kit';
 import type { Handle } from '@sveltejs/kit';
 
 const PUBLIC_ROUTES = ['/login'];
+const CLIENTE_ROUTES = ['/pedidos', '/orcamentos/salvos'];
 
 export const handle: Handle = async ({ event, resolve }) => {
-    //pega o cookie da sessao
     const session = event.cookies.get('session');
+    const pathname = event.url.pathname;
 
-    //se nao tiver cookie, o usuario nao ta logado
-    if(!session) {
+    // Logout: apaga cookie e redireciona imediatamente
+    if (pathname === '/logout') {
+        event.cookies.delete('session', { path: '/' });
+        throw redirect(303, '/login');
+    }
+
+    if (!session) {
         event.locals.user = null;
-        const isPublic = PUBLIC_ROUTES.some(r => event.url.pathname.startsWith(r));
+        const isPublic = PUBLIC_ROUTES.some(r => pathname.startsWith(r));
         if (!isPublic) throw redirect(303, '/login');
         return resolve(event);
     }
 
-    //Busca o usuario no banco pelo id salvo no cookie
-
-const user = await prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
         where: { id: session },
-        select: {
-            id: true,
-            username: true,
-        }
+        select: { id: true, username: true, role: true, clienteId: true }
     });
 
+    if (!user) {
+        event.cookies.delete('session', { path: '/' });
+        throw redirect(303, '/login');
+    }
+
     event.locals.user = user;
+
+    // Clientes só podem acessar as rotas permitidas
+    if (user.role === 'cliente') {
+        const allowed = CLIENTE_ROUTES.some(r => pathname.startsWith(r));
+        if (!allowed) throw redirect(303, '/pedidos');
+    }
+
     return resolve(event);
 };

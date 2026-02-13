@@ -23,7 +23,7 @@
 		createdAt: Date;
 		updatedAt: Date;
 	};
-	
+
 	type PageData = {
 		user: { id: string; username: string };
 		maquinas: Maquina[];
@@ -50,7 +50,7 @@
 	
 	let editingMaquinaId = $state<string | null>(null);
 	let editingMaterialId = $state<string | null>(null);
-	
+
 	function editarMaquina(maquina: typeof data.maquinas[0]) {
 		formMaquina = {
 			id: maquina.id,
@@ -82,6 +82,7 @@
 		formMaterial = { id: '', nome: '', precoM2: '', ativo: true };
 		editingMaterialId = null;
 	}
+
 </script>
 
 <div class="page-header">
@@ -100,7 +101,7 @@
 		<Icon icon="lucide:settings" />
 		Máquinas
 	</button>
-	<button 
+	<button
 		class="tab {activeTab === 'materiais' ? 'active' : ''}"
 		onclick={() => activeTab = 'materiais'}
 	>

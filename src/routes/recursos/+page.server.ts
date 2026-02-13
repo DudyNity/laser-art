@@ -6,7 +6,6 @@ import { requireAuth } from '$lib/server/auth';
 export const load: PageServerLoad = async ({ locals }) => {
     requireAuth(locals);
     
-    // Busca máquinas e materiais do banco
     const [maquinas, materiais] = await Promise.all([
         prisma.maquina.findMany({
             orderBy: { createdAt: 'desc' }
@@ -15,7 +14,7 @@ export const load: PageServerLoad = async ({ locals }) => {
             orderBy: { createdAt: 'desc' }
         })
     ]);
-    
+
     return {
         user: locals.user,
         maquinas,
@@ -142,15 +141,15 @@ export const actions = {
     excluirMaterial: async ({ request }) => {
         const data = await request.formData();
         const id = data.get('id');
-        
+
         if (!id) {
             return fail(400, { error: 'ID inválido' });
         }
-        
+
         await prisma.material.delete({
             where: { id: id.toString() }
         });
-        
+
         return { success: true };
     }
 } satisfies Actions;

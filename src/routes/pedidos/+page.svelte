@@ -2,61 +2,93 @@
 	import Icon from '@iconify/svelte';
 	import { enhance } from '$app/forms';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
+	import StatusBadge from '$lib/components/ui/StatusBadge.svelte';
 	import { formatDate, formatCurrency, getPedidoStatusLabel, getPedidoStatusVariant } from '$lib/utils/format';
+
+	type OrcamentoInfo = {
+		descricao: string | null;
+		itensDetalhados: string | null;
+	};
 
 	type Pedido = {
 		id: string;
-		orcamento: string;
 		cliente: string;
 		valor: number;
 		dataEntrega: Date;
 		status: string;
 		createdAt: Date;
 		updatedAt: Date;
+		orcamento: OrcamentoInfo;
 	};
-	
+
 	type PageData = {
 		user: { id: string; username: string };
+		isCliente: boolean;
 		pedidos: Pedido[];
 	};
-	
+
 	let { data }: { data: PageData } = $props();
-	
+
 	let showModal = $state(false);
 	let statusFilter = $state('todos');
-	
+	let expandedIds = $state(new Set<string>());
+
 	let formData = $state({
-		orcamento: '',
 		cliente: '',
 		valor: '',
 		dataEntrega: '',
 		status: 'Pendente'
 	});
-	
+
 	let filteredPedidos = $derived(() => {
 		if (statusFilter === 'todos') return data.pedidos;
 		return data.pedidos.filter(p => p.status === statusFilter);
 	});
-	
+
+	function getProdutoNome(pedido: Pedido): string {
+		if (pedido.orcamento?.itensDetalhados) {
+			try {
+				const d = JSON.parse(pedido.orcamento.itensDetalhados);
+				const itens = d.itens || [];
+				if (itens.length === 0) return pedido.orcamento.descricao || 'Produto';
+				if (itens.length === 1) return itens[0].descricaoProduto || 'Produto';
+				return `${itens[0].descricaoProduto} (+${itens.length - 1})`;
+			} catch {}
+		}
+		return pedido.orcamento?.descricao || 'Produto';
+	}
+
+	function getItens(pedido: Pedido): any[] {
+		if (!pedido.orcamento?.itensDetalhados) return [];
+		try {
+			const d = JSON.parse(pedido.orcamento.itensDetalhados);
+			return d.itens || [];
+		} catch { return []; }
+	}
+
+	function getGastos(pedido: Pedido): any[] {
+		if (!pedido.orcamento?.itensDetalhados) return [];
+		try {
+			const d = JSON.parse(pedido.orcamento.itensDetalhados);
+			return d.gastosAdicionais || [];
+		} catch { return []; }
+	}
+
+	function toggleExpand(id: string) {
+		const next = new Set(expandedIds);
+		if (next.has(id)) next.delete(id);
+		else next.add(id);
+		expandedIds = next;
+	}
+
 	function abrirModal() {
 		showModal = true;
 	}
-	
+
 	function fecharModal() {
 		showModal = false;
-		limparForm();
+		formData = { cliente: '', valor: '', dataEntrega: '', status: 'Pendente' };
 	}
-	
-	function limparForm() {
-		formData = {
-			orcamento: '',
-			cliente: '',
-			valor: '',
-			dataEntrega: '',
-			status: 'Pendente'
-		};
-	}
-	
 </script>
 
 <div class="page-header">
@@ -64,37 +96,39 @@
 		<Icon icon="lucide:package" class="header-icon" />
 		<h1>Gestão de Pedidos</h1>
 	</div>
+	{#if !data.isCliente}
 	<button class="btn-primary" onclick={abrirModal}>
 		<Icon icon="lucide:plus" />
 		Novo Pedido
 	</button>
+	{/if}
 </div>
 
 <!-- Filtros -->
 <div class="filters-section">
 	<div class="filter-chips">
-		<button 
+		<button
 			class="chip {statusFilter === 'todos' ? 'active' : ''}"
 			onclick={() => statusFilter = 'todos'}
 		>
 			<Icon icon="lucide:list" />
 			Todos
 		</button>
-		<button 
+		<button
 			class="chip {statusFilter === 'Pendente' ? 'active' : ''}"
 			onclick={() => statusFilter = 'Pendente'}
 		>
 			<Icon icon="lucide:clock" />
 			Pendentes
 		</button>
-		<button 
+		<button
 			class="chip {statusFilter === 'EmProducao' ? 'active' : ''}"
 			onclick={() => statusFilter = 'EmProducao'}
 		>
 			<Icon icon="lucide:loader" />
 			Em Produção
 		</button>
-		<button 
+		<button
 			class="chip {statusFilter === 'Concluido' ? 'active' : ''}"
 			onclick={() => statusFilter = 'Concluido'}
 		>
@@ -110,7 +144,7 @@
 		<table>
 			<thead>
 				<tr>
-					<th>Orçamento</th>
+					<th>Produto</th>
 					<th>Cliente</th>
 					<th>Valor</th>
 					<th>Entrega</th>
@@ -120,41 +154,50 @@
 			</thead>
 			<tbody>
 				{#each filteredPedidos() as pedido}
-					<tr>
-						<td class="orcamento-cell">{pedido.orcamento}</td>
+					<tr class="pedido-row {expandedIds.has(pedido.id) ? 'expanded' : ''}">
+						<td class="produto-cell">{getProdutoNome(pedido)}</td>
 						<td>{pedido.cliente}</td>
 						<td class="valor">{formatCurrency(pedido.valor)}</td>
 						<td>{formatDate(pedido.dataEntrega)}</td>
 						<td>
-							<form 
-								method="POST" 
-								action="?/atualizarStatus"
-								use:enhance
-								style="display: inline;"
-							>
-								<input type="hidden" name="id" value={pedido.id} />
-								<select 
-									class="status-select {getPedidoStatusVariant(pedido.status)}"
-									name="status"
-									value={pedido.status}
-									onchange={(e) => e.currentTarget.form?.requestSubmit()}
+							{#if data.isCliente}
+								<StatusBadge
+									variant={getPedidoStatusVariant(pedido.status)}
+									label={getPedidoStatusLabel(pedido.status)}
+								/>
+							{:else}
+								<form
+									method="POST"
+									action="?/atualizarStatus"
+									use:enhance
+									style="display: inline;"
 								>
-									<option value="Pendente">Pendente</option>
-									<option value="EmProducao">Em Produção</option>
-									<option value="Concluido">Concluído</option>
-								</select>
-							</form>
+									<input type="hidden" name="id" value={pedido.id} />
+									<select
+										class="status-select {getPedidoStatusVariant(pedido.status)}"
+										name="status"
+										value={pedido.status}
+										onchange={(e) => e.currentTarget.form?.requestSubmit()}
+									>
+										<option value="Pendente">Pendente</option>
+										<option value="EmProducao">Em Produção</option>
+										<option value="Concluido">Concluído</option>
+									</select>
+								</form>
+							{/if}
 						</td>
 						<td>
 							<div class="action-buttons">
-								<button class="btn-icon" title="Visualizar">
-									<Icon icon="lucide:eye" />
+								<button
+									class="btn-icon {expandedIds.has(pedido.id) ? 'active-view' : ''}"
+									title="Visualizar detalhes"
+									onclick={() => toggleExpand(pedido.id)}
+								>
+									<Icon icon={expandedIds.has(pedido.id) ? 'lucide:chevron-up' : 'lucide:eye'} />
 								</button>
-								<button class="btn-icon" title="Gerar PDF">
-									<Icon icon="lucide:file-text" />
-								</button>
-								<form 
-									method="POST" 
+								{#if !data.isCliente}
+								<form
+									method="POST"
 									action="?/excluirPedido"
 									use:enhance={() => {
 										return async ({ update }) => {
@@ -170,21 +213,87 @@
 										<Icon icon="lucide:trash-2" />
 									</button>
 								</form>
+								{/if}
 							</div>
 						</td>
 					</tr>
+					{#if expandedIds.has(pedido.id)}
+					<tr class="detail-row">
+						<td colspan="6">
+							<div class="detail-panel">
+								<h4>
+									<Icon icon="lucide:clipboard-list" />
+									Detalhes do Pedido
+								</h4>
+								{#each getItens(pedido) as item, i}
+								<div class="detail-item">
+									<div class="detail-item-header">
+										<span class="item-num">#{i + 1}</span>
+										<strong>{item.descricaoProduto || 'Item'}</strong>
+										{#if item.pintada}
+											<span class="badge-pintada">
+												<Icon icon="lucide:droplet" />
+												Pintada
+											</span>
+										{/if}
+									</div>
+									<div class="detail-grid">
+										<div class="detail-field">
+											<span class="field-label">Material</span>
+											<span class="field-value">{item.materialNome || 'N/A'}</span>
+										</div>
+										<div class="detail-field">
+											<span class="field-label">Máquina</span>
+											<span class="field-value">{item.maquinaNome || 'N/A'}</span>
+										</div>
+										<div class="detail-field">
+											<span class="field-label">Dimensões</span>
+											<span class="field-value">{item.larguraMm || 0} × {item.alturaMm || 0} mm</span>
+										</div>
+										<div class="detail-field">
+											<span class="field-label">Quantidade</span>
+											<span class="field-value">{item.quantidade || 1} un.</span>
+										</div>
+										{#if item.pintada && item.valorPintura > 0}
+										<div class="detail-field">
+											<span class="field-label">Pintura</span>
+											<span class="field-value">{formatCurrency(item.valorPintura)}</span>
+										</div>
+										{/if}
+										<div class="detail-field highlight">
+											<span class="field-label">Valor</span>
+											<span class="field-value">{formatCurrency(item.valorTotal || 0)}</span>
+										</div>
+									</div>
+								</div>
+								{/each}
+								{#if getGastos(pedido).length > 0}
+								<div class="detail-gastos">
+									<span class="gastos-label">Gastos adicionais:</span>
+									{#each getGastos(pedido) as gasto}
+									<span class="gasto-tag">{gasto.descricao}: {formatCurrency(gasto.valor)}</span>
+									{/each}
+								</div>
+								{/if}
+								{#if getItens(pedido).length === 0 && !pedido.orcamento?.itensDetalhados}
+								<p class="no-details">Sem detalhes de itens disponíveis.</p>
+								{/if}
+							</div>
+						</td>
+					</tr>
+					{/if}
 				{/each}
 			</tbody>
 		</table>
-		
+
 		{#if filteredPedidos().length === 0}
 			<EmptyState message="Nenhum pedido encontrado" />
 		{/if}
 	</div>
 </div>
 
-<!-- Modal Lateral -->
-{#if showModal}
+<!-- Modal Lateral (apenas para admins) -->
+{#if showModal && !data.isCliente}
 	<div class="modal-overlay" onclick={fecharModal}>
 		<div class="modal-drawer" onclick={(e) => e.stopPropagation()}>
 			<div class="modal-header">
@@ -193,10 +302,10 @@
 					<Icon icon="lucide:x" />
 				</button>
 			</div>
-			
-			<form 
-				class="modal-body" 
-				method="POST" 
+
+			<form
+				class="modal-body"
+				method="POST"
 				action="?/criarPedido"
 				use:enhance={() => {
 					return async ({ result, update }) => {
@@ -208,21 +317,9 @@
 				}}
 			>
 				<div class="field">
-					<label for="orcamento">Código do Orçamento</label>
-					<input 
-						type="text" 
-						id="orcamento"
-						name="orcamento"
-						bind:value={formData.orcamento}
-						placeholder="Ex: ORC-001"
-						required
-					/>
-				</div>
-				
-				<div class="field">
 					<label for="cliente">Nome do Cliente</label>
-					<input 
-						type="text" 
+					<input
+						type="text"
 						id="cliente"
 						name="cliente"
 						bind:value={formData.cliente}
@@ -230,11 +327,11 @@
 						required
 					/>
 				</div>
-				
+
 				<div class="field">
 					<label for="valor">Valor (R$)</label>
-					<input 
-						type="number" 
+					<input
+						type="number"
 						id="valor"
 						name="valor"
 						bind:value={formData.valor}
@@ -243,45 +340,43 @@
 						required
 					/>
 				</div>
-				
+
 				<div class="field">
 					<label for="dataEntrega">Data de Entrega</label>
-					<input 
-						type="date" 
+					<input
+						type="date"
 						id="dataEntrega"
 						name="dataEntrega"
 						bind:value={formData.dataEntrega}
 						required
 					/>
 				</div>
-				
+
 				<div class="field">
 					<label>Status Inicial</label>
 					<div class="radio-group">
 						<label class="radio-option">
-							<input 
-								type="radio" 
-								name="status" 
+							<input
+								type="radio"
+								name="status"
 								value="Pendente"
 								bind:group={formData.status}
 							/>
 							<span>Pendente</span>
 						</label>
-						
 						<label class="radio-option">
-							<input 
-								type="radio" 
-								name="status" 
+							<input
+								type="radio"
+								name="status"
 								value="EmProducao"
 								bind:group={formData.status}
 							/>
 							<span>Em Produção</span>
 						</label>
-						
 						<label class="radio-option">
-							<input 
-								type="radio" 
-								name="status" 
+							<input
+								type="radio"
+								name="status"
 								value="Concluido"
 								bind:group={formData.status}
 							/>
@@ -289,7 +384,7 @@
 						</label>
 					</div>
 				</div>
-				
+
 				<div class="modal-footer">
 					<button type="button" class="btn-secondary" onclick={fecharModal}>
 						Cancelar
@@ -442,11 +537,16 @@ td {
 	border-top: 1px solid rgba(255, 191, 145, 0.1);
 }
 
-tr:hover td {
+.pedido-row:hover td {
 	background: rgba(40, 40, 40, 0.5);
 }
 
-.orcamento-cell {
+.pedido-row.expanded td {
+	background: rgba(40, 40, 40, 0.4);
+	border-bottom: none;
+}
+
+.produto-cell {
 	color: #60a5fa;
 	font-weight: 600;
 }
@@ -509,6 +609,12 @@ tr:hover td {
 	color: #ffbf91;
 }
 
+.btn-icon.active-view {
+	background: rgba(255, 154, 82, 0.15);
+	border-color: #ffbf91;
+	color: #ffbf91;
+}
+
 .btn-icon.danger:hover {
 	background: rgba(239, 68, 68, 0.2);
 	border-color: #ef4444;
@@ -518,6 +624,144 @@ tr:hover td {
 .btn-icon :global(svg) {
 	width: 15px;
 	height: 15px;
+}
+
+/* Detail row */
+.detail-row td {
+	padding: 0;
+	border-top: none;
+}
+
+.detail-panel {
+	background: rgba(20, 20, 20, 0.6);
+	border-top: 1px solid rgba(255, 191, 145, 0.15);
+	border-bottom: 1px solid rgba(255, 191, 145, 0.15);
+	padding: 16px 20px;
+}
+
+.detail-panel h4 {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 0.85rem;
+	font-weight: 600;
+	color: #ffbf91;
+	margin: 0 0 14px 0;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.detail-panel h4 :global(svg) {
+	width: 15px;
+	height: 15px;
+}
+
+.detail-item {
+	background: rgba(40, 40, 40, 0.5);
+	border: 1px solid rgba(255, 191, 145, 0.1);
+	border-radius: 8px;
+	padding: 12px;
+	margin-bottom: 10px;
+}
+
+.detail-item-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 10px;
+}
+
+.item-num {
+	font-size: 0.75rem;
+	font-weight: 700;
+	color: #9ca3af;
+	background: rgba(60, 60, 60, 0.8);
+	padding: 2px 7px;
+	border-radius: 4px;
+}
+
+.detail-item-header strong {
+	color: #f9fafb;
+	font-size: 0.9rem;
+}
+
+.badge-pintada {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 0.7rem;
+	font-weight: 600;
+	color: #a78bfa;
+	background: rgba(167, 139, 250, 0.15);
+	border: 1px solid rgba(167, 139, 250, 0.3);
+	border-radius: 4px;
+	padding: 2px 6px;
+}
+
+.badge-pintada :global(svg) {
+	width: 11px;
+	height: 11px;
+}
+
+.detail-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+	gap: 8px;
+}
+
+.detail-field {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.field-label {
+	font-size: 0.72rem;
+	color: #9ca3af;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.field-value {
+	font-size: 0.85rem;
+	color: #e5e7eb;
+	font-weight: 500;
+}
+
+.detail-field.highlight .field-value {
+	color: #4ade80;
+	font-weight: 600;
+}
+
+.detail-gastos {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin-top: 10px;
+	padding-top: 10px;
+	border-top: 1px solid rgba(255, 191, 145, 0.1);
+}
+
+.gastos-label {
+	font-size: 0.8rem;
+	color: #9ca3af;
+	font-weight: 600;
+}
+
+.gasto-tag {
+	font-size: 0.8rem;
+	color: #fbbf24;
+	background: rgba(251, 191, 36, 0.1);
+	border: 1px solid rgba(251, 191, 36, 0.2);
+	border-radius: 5px;
+	padding: 3px 8px;
+}
+
+.no-details {
+	font-size: 0.85rem;
+	color: #6b7280;
+	margin: 0;
 }
 
 /* Modal Drawer */
@@ -544,12 +788,8 @@ tr:hover td {
 }
 
 @keyframes slideIn {
-	from {
-		transform: translateX(100%);
-	}
-	to {
-		transform: translateX(0);
-	}
+	from { transform: translateX(100%); }
+	to { transform: translateX(0); }
 }
 
 .modal-header {

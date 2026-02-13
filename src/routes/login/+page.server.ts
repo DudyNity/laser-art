@@ -10,6 +10,7 @@ export const actions = {
         const data = await request.formData();
         const username = data.get('username');
         const password = data.get('password');
+        const rememberMe = data.get('rememberMe') === 'on';
         
         if (!username || !password) {
             return fail(400, { error: 'Preencha todos os campos' });
@@ -37,7 +38,7 @@ export const actions = {
             httpOnly: true,
             sameSite: 'strict',
             secure: process.env.NODE_ENV === 'production',
-            maxAge: 60 * 60 * 24 * 7
+            maxAge: rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 24 * 7
         });
         
         throw redirect(303, '/');

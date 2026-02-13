@@ -5,7 +5,7 @@
 	type Props = {
 		isMobileOpen?: boolean;
 		onMobileClose?: () => void;
-		user?: { id: string; username: string } | null;
+		user?: { id: string; username: string; role: string } | null;
 	};
 
 	let { isMobileOpen = false, onMobileClose, user = null }: Props = $props();
@@ -51,6 +51,7 @@
 
 	<div class="menu-section">
 
+		{#if user?.role !== 'cliente'}
 		<a href="/" class="menu-item {isActive('/') ? 'active' : ''}" onclick={handleLinkClick}>
 			<Icon icon="lucide:layout-dashboard" />
 			<span>Dashboard</span>
@@ -65,12 +66,21 @@
 			<Icon icon="lucide:save" />
 			<span>Orçamentos Salvos</span>
 		</a>
+		{/if}
 
 		<a href="/pedidos" class="menu-item {isActive('/pedidos') ? 'active' : ''}" onclick={handleLinkClick}>
 			<Icon icon="lucide:package" />
 			<span>Pedidos</span>
 		</a>
 
+		{#if user?.role === 'cliente'}
+		<a href="/orcamentos/salvos" class="menu-item {currentPath === '/orcamentos/salvos' ? 'active' : ''}" onclick={handleLinkClick}>
+			<Icon icon="lucide:save" />
+			<span>Orçamentos</span>
+		</a>
+		{/if}
+
+		{#if user?.role !== 'cliente'}
 		<a href="/clientes" class="menu-item {isActive('/clientes') ? 'active' : ''}" onclick={handleLinkClick}>
 			<Icon icon="lucide:users" />
 			<span>Clientes</span>
@@ -81,24 +91,27 @@
 			<span>Recursos</span>
 		</a>
 
+		<a href="/usuarios" class="menu-item {isActive('/usuarios') ? 'active' : ''}" onclick={handleLinkClick}>
+			<Icon icon="lucide:user-cog" />
+			<span>Usuários</span>
+		</a>
+
 		<a href="/configuracoes" class="menu-item {isActive('/configuracoes') ? 'active' : ''}" onclick={handleLinkClick}>
 			<Icon icon="lucide:settings" />
 			<span>Configurações</span>
 		</a>
+		{/if}
 	</div>
 
 	<div class="user-section">
-		<div class="user-avatar">
-			<Icon icon="lucide:user" />
-		</div>
+		<a href="/logout" class="user-avatar logout-btn" title="Sair">
+			<Icon icon="lucide:log-out" />
+		</a>
 		<div class="user-extra">
 			<div class="user-details">
 				<p class="user-name">{user?.username ?? 'Usuário'}</p>
-				<p class="user-role">Administrador</p>
+				<p class="user-role">{user?.role === 'cliente' ? 'Cliente' : 'Administrador'}</p>
 			</div>
-			<a href="/login" class="logout-btn">
-				<Icon icon="lucide:log-out" />
-			</a>
 		</div>
 	</div>
 </nav>
@@ -280,29 +293,16 @@
 }
 
 .logout-btn {
-	width: 36px;
-	height: 36px;
-	background: rgba(60, 60, 60, 0.8);
-	border: 1px solid rgba(255, 191, 145, 0.2);
-	border-radius: 8px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	color: #d1d5db;
-	flex-shrink: 0;
 	text-decoration: none;
+	cursor: pointer;
+	border: 1px solid rgba(255, 191, 145, 0.2);
 	transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
 .logout-btn:hover {
-	background: rgba(239, 68, 68, 0.2);
-	border-color: #ef4444;
-	color: #ef4444;
-}
-
-.logout-btn :global(svg) {
-	width: 18px;
-	height: 18px;
+	background: rgba(239, 68, 68, 0.25) !important;
+	border-color: #ef4444 !important;
+	color: #ef4444 !important;
 }
 
 /* Scrollbar customizado */
