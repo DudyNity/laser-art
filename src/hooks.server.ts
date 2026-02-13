@@ -1,5 +1,8 @@
 import { prisma } from '$lib/server/prisma';
+import { redirect } from '@sveltejs/kit';
 import type { Handle } from '@sveltejs/kit';
+
+const PUBLIC_ROUTES = ['/login'];
 
 export const handle: Handle = async ({ event, resolve }) => {
     //pega o cookie da sessao
@@ -8,6 +11,8 @@ export const handle: Handle = async ({ event, resolve }) => {
     //se nao tiver cookie, o usuario nao ta logado
     if(!session) {
         event.locals.user = null;
+        const isPublic = PUBLIC_ROUTES.some(r => event.url.pathname.startsWith(r));
+        if (!isPublic) throw redirect(303, '/login');
         return resolve(event);
     }
 
