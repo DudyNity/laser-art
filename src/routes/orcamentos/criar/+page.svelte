@@ -75,6 +75,7 @@
 	
 	// Estado do formulário principal
 	let clienteSelecionadoId = $state('');
+	let nomeClientePDF = $state('');
 	let observacoes = $state('');
 	let itens = $state<ItemOrcamento[]>([]);
 	let gastosAdicionais = $state<GastoAdicional[]>([]);
@@ -275,9 +276,9 @@ let tempoTotalHoras = $derived(() => {
 // ==================== PDF SIMPLES (CLIENTE) ====================
 async function gerarPDFSimples(orcamentoData?: any) {
 	const isOrcamentoSalvo = !!orcamentoData;
-	
-	if (!isOrcamentoSalvo && (!clienteSelecionadoId || itens.length === 0)) {
-		alert('Preencha o cliente e adicione itens antes de gerar o PDF');
+
+	if (!isOrcamentoSalvo && itens.length === 0) {
+		alert('Adicione itens antes de gerar o PDF');
 		return;
 	}
 	
@@ -298,7 +299,7 @@ async function gerarPDFSimples(orcamentoData?: any) {
 		// Dados - Garantir que sejam strings válidas
 		const dadosCliente = isOrcamentoSalvo
 			? (orcamentoData.cliente?.nome || 'Cliente não informado')
-			: (data.clientes.find(c => c.id === clienteSelecionadoId)?.nome || 'Cliente não informado');
+			: (nomeClientePDF.trim() || 'Cliente não informado');
 
 
 		// Criar objeto Date uma única vez
@@ -518,11 +519,11 @@ async function gerarPDFSimples(orcamentoData?: any) {
 // ==================== PDF COMPLETO (CONTROLE INTERNO) ====================
 async function gerarPDFCompleto(orcamentoData?: any) {
 	const isOrcamentoSalvo = !!orcamentoData;
-	
-	if (!isOrcamentoSalvo && (!clienteSelecionadoId || itens.length === 0)) {
-	alert('Selecione o cliente e adicione itens antes de gerar o PDF');
-	return;
-}
+
+	if (!isOrcamentoSalvo && itens.length === 0) {
+		alert('Adicione itens antes de gerar o PDF');
+		return;
+	}
 	
 	try {
 		const doc = new jsPDF();
@@ -541,7 +542,7 @@ async function gerarPDFCompleto(orcamentoData?: any) {
 		// Dados - Garantir que sejam strings/números válidos
 		const dadosCliente = isOrcamentoSalvo
 			? (orcamentoData.cliente?.nome || 'Cliente não informado')
-			: (data.clientes.find(c => c.id === clienteSelecionadoId)?.nome || 'Cliente não informado');
+			: (nomeClientePDF.trim() || 'Cliente não informado');
 		
 		// Criar objeto Date uma única vez
 		const dataAtual = new Date();
@@ -859,10 +860,16 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 		<h1>Criar Orçamento</h1>
 	</div>
 	<div class="header-actions">
+		<input
+			type="text"
+			class="input-nome-pdf"
+			placeholder="Nome do cliente no PDF"
+			bind:value={nomeClientePDF}
+		/>
 		<button
 			class="btn-export"
 			onclick={() => gerarPDFSimples()}
-			disabled={!clienteSelecionadoId || itens.length === 0}
+			disabled={itens.length === 0}
 			title="PDF resumido para enviar ao cliente"
 		>
 			<Icon icon="lucide:file-text" />
@@ -871,7 +878,7 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 		<button
 			class="btn-export"
 			onclick={() => gerarPDFCompleto()}
-			disabled={!clienteSelecionadoId || itens.length === 0}
+			disabled={itens.length === 0}
 			title="PDF detalhado para controle interno"
 			style="background-color: #3b82f6;"
 		>
@@ -1335,6 +1342,26 @@ h1 {
 .header-actions {
 	display: flex;
 	gap: 10px;
+	align-items: center;
+}
+
+.input-nome-pdf {
+	padding: 10px 14px;
+	background: rgba(255, 255, 255, 0.05);
+	border: 1px solid rgba(255, 191, 145, 0.3);
+	border-radius: 8px;
+	color: #e0e0e0;
+	font-size: 0.9rem;
+	width: 200px;
+}
+
+.input-nome-pdf::placeholder {
+	color: rgba(224, 224, 224, 0.4);
+}
+
+.input-nome-pdf:focus {
+	outline: none;
+	border-color: #ffbf91;
 }
 
 .btn-export {

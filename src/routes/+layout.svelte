@@ -51,13 +51,16 @@
 .layout {
 	display: flex;
 	width: 100%;
-	min-height: 100vh;
+	height: 100vh;
+	overflow: hidden;
 }
 
 main {
 	flex: 1;
 	padding: 24px;
 	overflow-y: auto;
+	height: 100vh;
+	box-sizing: border-box;
 	background: #2a2a2a;
 	color: #e0e0e0;
 	position: relative;
