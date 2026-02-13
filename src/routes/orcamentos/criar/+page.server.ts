@@ -7,38 +7,39 @@ export const load = async ({ locals }: RequestEvent) => {
     requireAuth(locals);
     
     const [maquinas, materiais, clientes] = await Promise.all([
-    prisma.maquina.findMany({
-        where: { ativa: true },
-        orderBy: { nome: 'asc' }
-    }),
-    prisma.material.findMany({
-        where: { ativo: true },
-        orderBy: { nome: 'asc' }
-    }),
-    prisma.cliente.findMany({
-        where: { ativo: true },
-        orderBy: { nome: 'asc' },
-        select: {
-            id: true,
-            nome: true,
-            telefone: true,
-            email: true
-        }
-    })
-]);
+        prisma.maquina.findMany({
+            where: { ativa: true },
+            orderBy: { nome: 'asc' }
+        }),
+        prisma.material.findMany({
+            where: { ativo: true },
+            orderBy: { nome: 'asc' }
+        }),
+        prisma.cliente.findMany({
+            where: { ativo: true },
+            orderBy: { nome: 'asc' },
+            select: {
+                id: true,
+                nome: true,
+                telefone: true,
+                email: true
+            }
+        })
+    ]);
 
-return {
-    user: locals.user,
-    maquinas,
-    materiais,
-    clientes
-};
+    return {
+        user: locals.user,
+        maquinas,
+        materiais,
+        clientes
+    };
 };
 
 export const actions = {
     criarOrcamento: async ({ request }: RequestEvent) => {
         const data = await request.formData();
         const clienteId = data.get('clienteId');
+        const nomeCliente = data.get('nomeCliente');
         const descricao = data.get('descricao');
         const itensDetalhados = data.get('itensDetalhados');
         const subtotal = data.get('subtotal');
@@ -46,13 +47,14 @@ export const actions = {
         const gastosAdicionais = data.get('gastosAdicionais');
         const valorFinal = data.get('valorFinal');
 
-        if (!clienteId || !valorFinal) {
+        if (!valorFinal) {
             return fail(400, { error: 'Preencha os campos obrigatórios' });
         }
 
         await prisma.orcamento.create({
             data: {
-                clienteId: clienteId.toString(),
+                clienteId: clienteId ? clienteId.toString() : null,
+                nomeCliente: nomeCliente ? nomeCliente.toString() : null,
                 descricao: descricao ? descricao.toString() : null,
                 itensDetalhados: itensDetalhados ? itensDetalhados.toString() : null,
                 subtotal: parseFloat(subtotal?.toString() || '0'),

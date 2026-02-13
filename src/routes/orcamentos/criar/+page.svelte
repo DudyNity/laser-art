@@ -52,7 +52,8 @@
 	// Extras
 	pintada: boolean;
 	valorPintura: number;
-	
+	gastosAdicionais: GastoAdicional[];
+
 	// Total
 	valorTotal: number;
 };
@@ -78,11 +79,10 @@
 	let nomeClientePDF = $state('');
 	let observacoes = $state('');
 	let itens = $state<ItemOrcamento[]>([]);
-	let gastosAdicionais = $state<GastoAdicional[]>([]);
-	
+
 	// Estado do item sendo adicionado
 	let descricaoProduto = $state('');
-	let materialSelecionadoId = $state(''); 
+	let materialSelecionadoId = $state('');
 	let larguraMm = $state('');
 	let alturaMm = $state('');
 	let quantidade = $state('1');
@@ -90,21 +90,21 @@
 	let tempoPorPecaMin = $state('');
 	let itemPintado = $state(false);
 	let valorPintura = $state('');
-	
-	// Estado gasto adicional
-	let descricaoGasto = $state('');
-	let valorGasto = $state('');
-	
+
+	// Estado gastos adicionais do item atual
+	let itemGastos = $state<GastoAdicional[]>([]);
+	let descricaoGastoItem = $state('');
+	let valorGastoItem = $state('');
+	let showGastoFormItem = $state(false);
+
 	// Modais
 	let showAddForm = $state(false);
-	let showGastoForm = $state(false);
-	
+	let itemEditandoId = $state('');
+
 	// Cálculos
 	let subtotal = $derived(itens.reduce((sum, item) => sum + item.valorTotal, 0));
-	let totalGastosAdicionais = $derived(gastosAdicionais.reduce((sum, g) => sum + g.valor, 0));
-	let totalComGastos = $derived(subtotal + totalGastosAdicionais);
 	let margemLucro = $state(30);
-	let valorFinal = $derived(totalComGastos * (1 + margemLucro / 100));
+	let valorFinal = $derived(subtotal * (1 + margemLucro / 100));
 
 
 	function getMaterial(id: string) {
@@ -154,8 +154,9 @@ let tempoTotalHoras = $derived(() => {
 	const valorMaterial = areaT * material.precoMm2;
 	const valorMaquina = tempoH * maquina.custoHora;
 	const valorPint = itemPintado && valorPintura ? parseFloat(valorPintura) : 0;
-	
-	return valorMaterial + valorMaquina + valorPint;
+	const totalGastosItem = itemGastos.reduce((sum, g) => sum + g.valor, 0);
+
+	return valorMaterial + valorMaquina + valorPint + totalGastosItem;
 }
 
 	
@@ -187,7 +188,8 @@ let tempoTotalHoras = $derived(() => {
 	const valorMaterial = areaT * material.precoMm2;
 	const valorMaquina = tempoH * maquina.custoHora;
 	const valorPint = itemPintado ? parseFloat(valorPintura) : 0;
-	
+	const totalGastosItem = itemGastos.reduce((sum, g) => sum + g.valor, 0);
+
 	const novoItem: ItemOrcamento = {
 		id: `item-${Date.now()}`,
 		descricaoProduto: descricaoProduto,
@@ -206,35 +208,39 @@ let tempoTotalHoras = $derived(() => {
 		maquinaValor: valorMaquina,
 		pintada: itemPintado,
 		valorPintura: valorPint,
-		valorTotal: valorMaterial + valorMaquina + valorPint
+		gastosAdicionais: [...itemGastos],
+		valorTotal: valorMaterial + valorMaquina + valorPint + totalGastosItem
 	};
 	
-	itens.push(novoItem);
+	if (itemEditandoId) {
+		itens = itens.map(i => i.id === itemEditandoId ? { ...novoItem, id: itemEditandoId } : i);
+	} else {
+		itens.push(novoItem);
+	}
 	limparFormItem();
 	showAddForm = false;
 }
 	
-	function adicionarGasto() {
-		if (!descricaoGasto || !valorGasto || parseFloat(valorGasto) <= 0) {
+	function adicionarGastoItem() {
+		if (!descricaoGastoItem || !valorGastoItem || parseFloat(valorGastoItem) <= 0) {
 			alert('Preencha a descrição e o valor do gasto');
 			return;
 		}
-		
-		gastosAdicionais.push({
+		itemGastos.push({
 			id: `gasto-${Date.now()}`,
-			descricao: descricaoGasto,
-			valor: parseFloat(valorGasto)
+			descricao: descricaoGastoItem,
+			valor: parseFloat(valorGastoItem)
 		});
-		
-		descricaoGasto = '';
-		valorGasto = '';
-		showGastoForm = false;
+		descricaoGastoItem = '';
+		valorGastoItem = '';
+		showGastoFormItem = false;
 	}
-	
-	function removerGasto(id: string) {
-		gastosAdicionais = gastosAdicionais.filter(g => g.id !== id);
+
+	function removerGastoItem(id: string) {
+		itemGastos = itemGastos.filter(g => g.id !== id);
 	}
-	
+
+
 	function limparFormItem() {
 	descricaoProduto = '';
 	materialSelecionadoId = '';
@@ -245,6 +251,11 @@ let tempoTotalHoras = $derived(() => {
 	tempoPorPecaMin = '';
 	itemPintado = false;
 	valorPintura = '';
+	itemGastos = [];
+	descricaoGastoItem = '';
+	valorGastoItem = '';
+	showGastoFormItem = false;
+	itemEditandoId = '';
 }
 	
 	function removerItem(id: string) {
@@ -252,25 +263,37 @@ let tempoTotalHoras = $derived(() => {
 			itens = itens.filter(i => i.id !== id);
 		}
 	}
+
+	function editarItem(id: string) {
+		const item = itens.find(i => i.id === id);
+		if (!item) return;
+		descricaoProduto = item.descricaoProduto;
+		materialSelecionadoId = item.materialId;
+		larguraMm = String(item.larguraMm);
+		alturaMm = String(item.alturaMm);
+		quantidade = String(item.quantidade);
+		maquinaSelecionadaId = item.maquinaId;
+		tempoPorPecaMin = String(item.tempoPorPecaMin);
+		itemPintado = item.pintada;
+		valorPintura = item.pintada ? String(item.valorPintura) : '';
+		itemGastos = [...(item.gastosAdicionais || [])];
+		itemEditandoId = id;
+		showAddForm = true;
+	}
 	
 	function limparTudo() {
 		if (confirm('Deseja limpar todo o orçamento?')) {
 			itens = [];
-			gastosAdicionais = [];
 			clienteSelecionadoId = '';
 			observacoes = '';
 			margemLucro = 30;
 			limparFormItem();
 			showAddForm = false;
-			showGastoForm = false;
 		}
 	}
 	
 	function gerarItensJSON() {
-		return JSON.stringify({
-			itens,
-			gastosAdicionais
-		});
+		return JSON.stringify({ itens });
 	}
 	
 // ==================== PDF SIMPLES (CLIENTE) ====================
@@ -329,7 +352,8 @@ async function gerarPDFSimples(orcamentoData?: any) {
 		}
 		
 		const dadosValorFinal = Number(isOrcamentoSalvo ? orcamentoData.valorFinal : valorFinal) || 0;
-		
+		const dadosMargemLucroSimples = Number(isOrcamentoSalvo ? orcamentoData.margemLucro : margemLucro) || 0;
+
 		// Debug
 		console.log('📋 Dados do PDF Simples:', { 
 			cliente: dadosCliente, 
@@ -350,162 +374,168 @@ async function gerarPDFSimples(orcamentoData?: any) {
 		} else {
 			dadosItens = itens;
 		}
-		
-		// ==================== CABEÇALHO COM LOGO ====================
-		doc.setFillColor(255, 154, 82);
-		doc.rect(0, 0, pageWidth, 45, 'F');
-		
+
+		// ==================== CABEÇALHO ====================
+		// Fundo escuro
+		doc.setFillColor(15, 23, 42);
+		doc.rect(0, 0, pageWidth, 42, 'F');
+		// Faixa laranja vibrante na base
+		doc.setFillColor(255, 107, 0);
+		doc.rect(0, 39, pageWidth, 4, 'F');
+
 		// Logo à esquerda (com tratamento de erro)
 		try {
 			const img = new Image();
 			img.src = '/Logo.png';
-			
-			// Aguardar o carregamento da imagem
 			await new Promise((resolve, reject) => {
 				img.onload = () => {
 					try {
-						doc.addImage(img, 'PNG', margin, 8, 30, 30);
+						doc.addImage(img, 'PNG', margin, 6, 28, 28);
 						resolve(true);
-					} catch (e) {
-						console.log('Erro ao adicionar logo:', e);
-						resolve(false);
-					}
+					} catch (e) { resolve(false); }
 				};
-				img.onerror = () => {
-					console.log('Logo não encontrada');
-					resolve(false);
-				};
-				// Timeout de 2 segundos
+				img.onerror = () => resolve(false);
 				setTimeout(() => resolve(false), 2000);
 			});
-		} catch (e) {
-			console.log('Erro ao carregar logo:', e);
-		}
-		
+		} catch (e) {}
+
 		// Título à direita
 		doc.setTextColor(255, 255, 255);
-		doc.setFontSize(20);
+		doc.setFontSize(22);
 		doc.setFont('helvetica', 'bold');
-		doc.text('ORÇAMENTO', pageWidth - margin, 15, { align: 'right' });
-		
-		doc.setFontSize(18);
-		doc.text('CORTE A LASER', pageWidth - margin, 24, { align: 'right' });
-		
-		y = 55;
-		
-		// ==================== INFO DA EMPRESA ====================
-		doc.setTextColor(60, 60, 60);
-		doc.setFontSize(14);
-		doc.setFont('helvetica', 'bold');
-		doc.text('LaserArt', margin, y);
-		
-		doc.setFontSize(9);
+		doc.text('ORÇAMENTO', pageWidth - margin, 16, { align: 'right' });
+		doc.setFontSize(10);
 		doc.setFont('helvetica', 'normal');
-		doc.setTextColor(80, 80, 80);
-		doc.text('Soluções em Corte a Laser', margin, y + 6);
-		
+		doc.setTextColor(255, 160, 100);
+		doc.text('CORTE A LASER • LaserArt', pageWidth - margin, 25, { align: 'right' });
 		doc.setFontSize(8);
+		doc.setTextColor(160, 180, 220);
+		doc.text('(47) 99999-9999  |  contato@laserart.com', pageWidth - margin, 33, { align: 'right' });
+
+		y = 53;
+
+		// ==================== CAIXA DO CLIENTE ====================
+		doc.setFillColor(255, 247, 237);
+		doc.rect(margin, y, pageWidth - (margin * 2), 26, 'F');
+		doc.setFillColor(255, 107, 0);
+		doc.rect(margin, y, 4, 26, 'F');
+
+		doc.setTextColor(255, 107, 0);
+		doc.setFontSize(7);
+		doc.setFont('helvetica', 'bold');
+		doc.text('CLIENTE', margin + 8, y + 7);
+
+		doc.setTextColor(15, 23, 42);
+		doc.setFontSize(12);
+		doc.setFont('helvetica', 'bold');
+		doc.text(String(dadosCliente), margin + 8, y + 14);
+
+		doc.setFontSize(8);
+		doc.setFont('helvetica', 'normal');
 		doc.setTextColor(100, 100, 100);
-		doc.text('Telefone: (47) 99999-9999', margin, y + 11);
-		doc.text('Email: contato@laserart.com', margin, y + 16);
-		
-		// Linha separadora
-		y += 23;
-		doc.setDrawColor(200, 200, 200);
-		doc.setLineWidth(0.3);
-		doc.line(margin, y, pageWidth - margin, y);
-		
-		y += 8;
-		
-		// ==================== DADOS DO CLIENTE ====================
-		doc.setTextColor(40, 40, 40);
+		doc.text(`Data: ${dadosData}   |   Hora: ${dadosHora}`, margin + 8, y + 21);
+
+		y += 34;
+
+		const pageHeightSimples = doc.internal.pageSize.getHeight();
+		const bottomMarginSimples = 20;
+		function checkPageSimples(needed: number) {
+			if (y + needed > pageHeightSimples - bottomMarginSimples) {
+				doc.addPage();
+				y = 20;
+			}
+		}
+
+		// ==================== CABEÇALHO DE ITENS ====================
+		doc.setTextColor(255, 107, 0);
 		doc.setFontSize(9);
 		doc.setFont('helvetica', 'bold');
-		
-		doc.text('CLIENTE:', margin, y);
-		doc.setFont('helvetica', 'normal');
-		doc.text(dadosCliente, margin + 25, y);
-		
-		y += 7;
-		doc.setFont('helvetica', 'bold');
-		doc.text('DATA:', margin, y);
-		doc.setFont('helvetica', 'normal');
-		doc.text(dadosData, margin + 25, y);
-		
-		y += 7;
-		doc.setFont('helvetica', 'bold');
-		doc.text('HORA:', margin, y);
-		doc.setFont('helvetica', 'normal');
-		doc.text(dadosHora, margin + 25, y);
-		
-		y += 12;
-		
+		doc.text('ITENS DO ORÇAMENTO', margin + 4, y + 6);
+		y += 14;
+
 		// ==================== ITENS ====================
 		dadosItens.forEach((item: any, index: number) => {
-			doc.setDrawColor(200, 200, 200);
-			doc.setLineWidth(0.3);
-			doc.line(margin, y, pageWidth - margin, y);
-			
-			y += 7;
-			
+			checkPageSimples(55);
+
+			// Nome do produto com fundo cinza e acento laranja
+			doc.setFillColor(245, 247, 250);
+			doc.rect(margin, y, pageWidth - (margin * 2), 9, 'F');
+			doc.setFillColor(255, 107, 0);
+			doc.rect(margin, y, 3, 9, 'F');
+
 			doc.setFontSize(10);
 			doc.setFont('helvetica', 'bold');
-			doc.setTextColor(60, 60, 60);
-			doc.text(`Descrição: ${String(item.descricaoProduto || 'Item')}`, margin, y);
-			
-			y += 7;
-			doc.setFontSize(9);
+			doc.setTextColor(15, 23, 42);
+			doc.text(String(item.descricaoProduto || 'Item'), margin + 6, y + 6);
+
+			doc.setFontSize(8);
+			doc.setFont('helvetica', 'normal');
+			doc.setTextColor(150, 150, 150);
+			doc.text(`#${index + 1}`, pageWidth - margin - 3, y + 6, { align: 'right' });
+
+			y += 16;
+
+			doc.setFontSize(8.5);
 			doc.setFont('helvetica', 'normal');
 			doc.setTextColor(80, 80, 80);
 			const qtd = Number(item.quantidade || 1);
-			doc.text(`Quantidade: ${qtd} ${qtd === 1 ? 'unidade' : 'unidades'}`, margin, y);
-
-			y += 6;
-			doc.text(`Material: ${String(item.materialNome || 'N/A')}`, margin, y);
-			
-			y += 10;
-			doc.setFontSize(10);
-			doc.setFont('helvetica', 'bold');
-			doc.setTextColor(40, 40, 40);
-			const valorUnitario = Number(item.valorTotal || 0) / qtd;
-			doc.text('VALOR UNITÁRIO', margin, y);
-			doc.text(`R$ ${valorUnitario.toFixed(2)}`, pageWidth - margin, y, { align: 'right' });
-
+			doc.text(`Qtd: ${qtd} ${qtd === 1 ? 'unidade' : 'unidades'}   |   Material: ${String(item.materialNome || 'N/A')}`, margin + 3, y);
 			y += 7;
-			doc.text('VALOR TOTAL', margin, y);
-			doc.text(`R$ ${Number(item.valorTotal || 0).toFixed(2)}`, pageWidth - margin, y, { align: 'right' });
-			
-			y += 12;
-		});
-		
-		// ==================== TOTAL GERAL ====================
-		if (dadosItens.length > 1 || dadosItens.length === 0) {
-			doc.setDrawColor(255, 154, 82);
-			doc.setLineWidth(0.5);
-			doc.line(margin, y, pageWidth - margin, y);
-			
-			y += 8;
-			
-			doc.setFontSize(12);
+
+			if (item.pintada) {
+				doc.text(`Pintura: R$ ${Number(item.valorPintura || 0).toFixed(2)}`, margin + 3, y);
+				y += 6;
+			}
+
+			const gastosPorItem: any[] = item.gastosAdicionais || [];
+			gastosPorItem.forEach((g: any) => {
+				doc.text(`${String(g.descricao || 'Gasto')}: R$ ${Number(g.valor || 0).toFixed(2)}`, margin + 3, y);
+				y += 6;
+			});
+
+			const margem = dadosMargemLucroSimples / 100;
+			const valorUnitario = (Number(item.valorTotal || 0) / qtd) * (1 + margem);
+			const valorTotalItem = Number(item.valorTotal || 0) * (1 + margem);
+
+			// Linha valor unitário
+			doc.setFillColor(255, 250, 245);
+			doc.rect(margin, y, pageWidth - (margin * 2), 7, 'F');
+			doc.setFontSize(8.5);
+			doc.setFont('helvetica', 'normal');
+			doc.setTextColor(80, 80, 80);
+			doc.text('Valor unitário', margin + 3, y + 5);
 			doc.setFont('helvetica', 'bold');
-			doc.setTextColor(255, 154, 82);
-			doc.text('VALOR TOTAL GERAL', margin, y);
-			doc.text(`R$ ${Number(dadosValorFinal).toFixed(2)}`, pageWidth - margin, y, { align: 'right' });
-		}
-		
-		y += 12;
-		
-		// ==================== PREVISÃO DE ENTREGA ====================
-		const dataEntrega = new Date(dataAtual);
-		dataEntrega.setDate(dataEntrega.getDate() + 7);
-		
-		doc.setFontSize(9);
+			doc.setTextColor(15, 23, 42);
+			doc.text(`R$ ${valorUnitario.toFixed(2)}`, pageWidth - margin - 3, y + 5, { align: 'right' });
+			y += 8;
+
+			// Linha valor total do item
+			doc.setFontSize(9);
+			doc.setFont('helvetica', 'bold');
+			doc.setTextColor(255, 107, 0);
+			doc.text('VALOR TOTAL DO ITEM', margin + 3, y + 5.5);
+			doc.text(`R$ ${valorTotalItem.toFixed(2)}`, pageWidth - margin - 3, y + 5.5, { align: 'right' });
+			y += 14;
+		});
+
+		// ==================== TOTAL GERAL ====================
+		checkPageSimples(20);
+		doc.setTextColor(5, 150, 105);
+		doc.setFontSize(12);
+		doc.setFont('helvetica', 'bold');
+		doc.text('VALOR TOTAL GERAL', margin + 5, y + 10);
+		doc.text(`R$ ${Number(dadosValorFinal).toFixed(2)}`, pageWidth - margin - 5, y + 10, { align: 'right' });
+
+		y += 22;
+
+		// ==================== RODAPÉ ====================
+		doc.setFontSize(8);
 		doc.setFont('helvetica', 'italic');
-		doc.setTextColor(100, 100, 100);
-		doc.text(`Previsão de entrega: ${dataEntrega.toLocaleDateString('pt-BR')}`, margin, y);
-		
+		doc.setTextColor(130, 130, 130);
+		doc.text('Orçamento válido por 7 dias', pageWidth / 2, y, { align: 'center' });
+
 		// ==================== SALVAR ====================
-		const nomeArquivo = `orcamento-simples-${dadosCliente.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`;
+		const nomeArquivo = `orcamento-${dadosCliente.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`;
 		doc.save(nomeArquivo);
 		
 		console.log('✅ PDF Simples gerado com sucesso:', nomeArquivo);
@@ -586,7 +616,7 @@ async function gerarPDFCompleto(orcamentoData?: any) {
 			}
 		} else {
 			dadosItens = itens;
-			dadosGastos = gastosAdicionais;
+			dadosGastos = [];
 		}
 		
 		// ==================== CABEÇALHO COM LOGO ====================
@@ -622,92 +652,97 @@ async function gerarPDFCompleto(orcamentoData?: any) {
 		
 		// Título à direita
 		doc.setTextColor(255, 255, 255);
-		doc.setFontSize(18);
+		doc.setFontSize(20);
 		doc.setFont('helvetica', 'bold');
-		doc.text('ORÇAMENTO DETALHADO', pageWidth - margin, 15, { align: 'right' });
-		
-		doc.setFontSize(16);
-		doc.text('CORTE A LASER', pageWidth - margin, 24, { align: 'right' });
-		
-		y = 55;
-		
-		// ==================== INFO DA EMPRESA ====================
-		doc.setTextColor(60, 60, 60);
-		doc.setFontSize(14);
-		doc.setFont('helvetica', 'bold');
-		doc.text('LaserArt', margin, y);
-		
-		doc.setFontSize(9);
+		doc.text('ORÇAMENTO COMPLETO', pageWidth - margin, 16, { align: 'right' });
+		doc.setFontSize(10);
 		doc.setFont('helvetica', 'normal');
-		doc.setTextColor(80, 80, 80);
-		doc.text('Soluções em Corte a Laser', margin, y + 6);
-		
+		doc.setTextColor(255, 160, 100);
+		doc.text('CORTE A LASER • LaserArt', pageWidth - margin, 25, { align: 'right' });
 		doc.setFontSize(8);
+		doc.setTextColor(160, 180, 220);
+		doc.text('(47) 99999-9999  |  contato@laserart.com', pageWidth - margin, 33, { align: 'right' });
+
+		y = 53;
+
+		// ==================== CAIXA DO CLIENTE ====================
+		doc.setFillColor(255, 247, 237);
+		doc.rect(margin, y, pageWidth - (margin * 2), 26, 'F');
+		doc.setFillColor(255, 107, 0);
+		doc.rect(margin, y, 4, 26, 'F');
+
+		doc.setTextColor(255, 107, 0);
+		doc.setFontSize(7);
+		doc.setFont('helvetica', 'bold');
+		doc.text('CLIENTE', margin + 8, y + 7);
+
+		doc.setTextColor(15, 23, 42);
+		doc.setFontSize(12);
+		doc.setFont('helvetica', 'bold');
+		doc.text(String(dadosCliente), margin + 8, y + 14);
+
+		doc.setFontSize(8);
+		doc.setFont('helvetica', 'normal');
 		doc.setTextColor(100, 100, 100);
-		doc.text('Telefone: (47) 99999-9999', margin, y + 11);
-		doc.text('Email: contato@laserart.com', margin, y + 16);
-		
-		// Linha separadora
-		y += 23;
-		doc.setDrawColor(200, 200, 200);
-		doc.setLineWidth(0.3);
-		doc.line(margin, y, pageWidth - margin, y);
-		
-		y += 8;
-		
-		// ==================== DADOS DO CLIENTE ====================
-		doc.setTextColor(40, 40, 40);
+		doc.text(`Data: ${dadosData}   |   Hora: ${dadosHora}`, margin + 8, y + 21);
+
+		y += 34;
+
+		const pageHeight = doc.internal.pageSize.getHeight();
+		const bottomMargin = 20;
+
+		function checkPage(needed: number) {
+			if (y + needed > pageHeight - bottomMargin) {
+				doc.addPage();
+				y = 20;
+			}
+		}
+
+		// ==================== CABEÇALHO DE ITENS ====================
+		doc.setTextColor(255, 107, 0);
 		doc.setFontSize(9);
 		doc.setFont('helvetica', 'bold');
-		
-		doc.text('CLIENTE:', margin, y);
-		doc.setFont('helvetica', 'normal');
-		doc.text(dadosCliente, margin + 25, y);
-		
-		y += 7;
-		doc.setFont('helvetica', 'bold');
-		doc.text('DATA:', margin, y);
-		doc.setFont('helvetica', 'normal');
-		doc.text(dadosData, margin + 25, y);
-		
-		y += 7;
-		doc.setFont('helvetica', 'bold');
-		doc.text('HORA:', margin, y);
-		doc.setFont('helvetica', 'normal');
-		doc.text(dadosHora, margin + 25, y);
-		
-		y += 12;
-		
+		doc.text('ITENS DETALHADOS', margin + 4, y + 6);
+		y += 14;
+
 		// ==================== ITENS DETALHADOS ====================
 		dadosItens.forEach((item: any, index: number) => {
-			doc.setDrawColor(200, 200, 200);
-			doc.setLineWidth(0.3);
-			doc.line(margin, y, pageWidth - margin, y);
-			
-			y += 7;
-			
+			checkPage(80);
+
+			// Nome do produto
+			doc.setFillColor(245, 247, 250);
+			doc.rect(margin, y, pageWidth - (margin * 2), 9, 'F');
+			doc.setFillColor(255, 107, 0);
+			doc.rect(margin, y, 3, 9, 'F');
+
 			doc.setFontSize(10);
 			doc.setFont('helvetica', 'bold');
-			doc.setTextColor(60, 60, 60);
-			doc.text(`Descrição do Projeto: ${item.descricaoProduto || 'Item'}`, margin, y);
-			
-			y += 10;
-			
+			doc.setTextColor(15, 23, 42);
+			doc.text(String(item.descricaoProduto || 'Item'), margin + 6, y + 6);
+			doc.setFontSize(8);
+			doc.setFont('helvetica', 'normal');
+			doc.setTextColor(150, 150, 150);
+			doc.text(`#${index + 1}`, pageWidth - margin - 3, y + 6, { align: 'right' });
+
+			y += 17;
+
+			checkPage(55);
+
 			// DETALHES TÉCNICOS
-			doc.setFillColor(245, 245, 245);
+			doc.setFillColor(15, 23, 42);
 			doc.rect(margin, y, pageWidth - (margin * 2), 8, 'F');
-			
-			doc.setFontSize(9);
+
+			doc.setFontSize(8.5);
 			doc.setFont('helvetica', 'bold');
-			doc.setTextColor(80, 80, 80);
+			doc.setTextColor(255, 255, 255);
 			doc.text('DETALHES TÉCNICOS', margin + 3, y + 5.5);
-			
-			y += 10;
-			
+
+			y += 15;
+
 			doc.setFontSize(8);
 			doc.setFont('helvetica', 'normal');
 			doc.setTextColor(60, 60, 60);
-			
+
 			doc.text(`Dimensões`, margin + 3, y);
 doc.text(`${Number(item.larguraMm || 0).toFixed(1)}mm × ${Number(item.alturaMm || 0).toFixed(1)}mm`, pageWidth - margin - 3, y, { align: 'right' });
 
@@ -740,23 +775,25 @@ doc.text(`Tempo total`, margin + 3, y);
 doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - margin - 3, y, { align: 'right' });
 			
 			y += 10;
-			
+
+			checkPage(60);
+
 			// CUSTOS DETALHADOS
-			doc.setFillColor(245, 245, 245);
+			doc.setFillColor(15, 23, 42);
 			doc.rect(margin, y, pageWidth - (margin * 2), 8, 'F');
-			
-			doc.setFontSize(9);
+
+			doc.setFontSize(8.5);
 			doc.setFont('helvetica', 'bold');
-			doc.setTextColor(80, 80, 80);
+			doc.setTextColor(255, 255, 255);
 			doc.text('CUSTOS DETALHADOS', margin + 3, y + 5.5);
 			doc.text('VALOR', pageWidth - margin - 3, y + 5.5, { align: 'right' });
-			
-			y += 10;
-			
+
+			y += 15;
+
 			doc.setFontSize(8);
 			doc.setFont('helvetica', 'normal');
 			doc.setTextColor(60, 60, 60);
-			
+
 			doc.text(`Custo de material`, margin + 3, y);
 			doc.text(`R$ ${Number(item.materialValor || 0).toFixed(2)}`, pageWidth - margin - 3, y, { align: 'right' });
 			
@@ -781,66 +818,34 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 			doc.text(`R$ ${Number(margemItem).toFixed(2)}`, pageWidth - margin - 3, y, { align: 'right' });
 			
 			y += 8;
-			
-			doc.setFontSize(10);
-			doc.setFont('helvetica', 'bold');
-			doc.setTextColor(255, 154, 82);
-			doc.text('VALOR FINAL', margin + 3, y);
+
+			// Valor final do item
 			const valorItemFinal = Number(item.valorTotal || 0) * (1 + Number(dadosMargemLucro) / 100);
-			doc.text(`R$ ${Number(valorItemFinal).toFixed(2)}`, pageWidth - margin - 3, y, { align: 'right' });
-			
-			y += 12;
-		});
-		
-		// GASTOS ADICIONAIS
-		if (dadosGastos.length > 0) {
-			doc.setFillColor(255, 251, 235);
-			doc.rect(margin, y, pageWidth - (margin * 2), 8, 'F');
-			
-			doc.setFontSize(9);
+			doc.setFontSize(9.5);
 			doc.setFont('helvetica', 'bold');
-			doc.setTextColor(180, 83, 9);
-			doc.text('GASTOS ADICIONAIS', margin + 3, y + 5.5);
-			
-			y += 10;
-			
-			doc.setFontSize(8);
-			doc.setFont('helvetica', 'normal');
-			doc.setTextColor(100, 100, 100);
-			
-			dadosGastos.forEach((gasto: any) => {
-				doc.text(`• ${String(gasto.descricao || 'Gasto')}`, margin + 3, y);
-				doc.text(`R$ ${Number(gasto.valor || 0).toFixed(2)}`, pageWidth - margin - 3, y, { align: 'right' });
-				y += 5;
-			});
-			
-			y += 5;
-		}
-		
+			doc.setTextColor(255, 107, 0);
+			doc.text('VALOR FINAL DO ITEM', margin + 3, y + 6);
+			doc.text(`R$ ${Number(valorItemFinal).toFixed(2)}`, pageWidth - margin - 3, y + 6, { align: 'right' });
+
+			y += 15;
+		});
+
 		// TOTAL GERAL
-		doc.setDrawColor(255, 154, 82);
-		doc.setLineWidth(0.5);
-		doc.line(margin, y, pageWidth - margin, y);
-		
-		y += 8;
-		
+		checkPage(20);
+		doc.setTextColor(5, 150, 105);
 		doc.setFontSize(12);
 		doc.setFont('helvetica', 'bold');
-		doc.setTextColor(255, 154, 82);
-		doc.text('VALOR TOTAL GERAL', margin, y);
-		doc.text(`R$ ${Number(dadosValorFinal).toFixed(2)}`, pageWidth - margin, y, { align: 'right' });
-		
-		y += 12;
-		
-		// PREVISÃO DE ENTREGA
-		const dataEntrega = new Date(dataAtual);
-		dataEntrega.setDate(dataEntrega.getDate() + 7);
-		
-		doc.setFontSize(9);
+		doc.text('VALOR TOTAL GERAL', margin + 5, y + 10);
+		doc.text(`R$ ${Number(dadosValorFinal).toFixed(2)}`, pageWidth - margin - 5, y + 10, { align: 'right' });
+
+		y += 22;
+
+		// RODAPÉ
+		doc.setFontSize(8);
 		doc.setFont('helvetica', 'italic');
-		doc.setTextColor(100, 100, 100);
-		doc.text(`Previsão de entrega: ${dataEntrega.toLocaleDateString('pt-BR')}`, margin, y);
-		
+		doc.setTextColor(130, 130, 130);
+		doc.text('Orçamento válido por 7 dias', pageWidth / 2, y, { align: 'center' });
+
 		// SALVAR
 		const nomeArquivo = `orcamento-completo-${dadosCliente.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`;
 		doc.save(nomeArquivo);
@@ -873,7 +878,7 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 			title="PDF resumido para enviar ao cliente"
 		>
 			<Icon icon="lucide:file-text" />
-			<span class="btn-label">PDF Simples</span>
+			<span class="btn-label">Orçamento</span>
 		</button>
 		<button
 			class="btn-export btn-export-completo"
@@ -882,7 +887,7 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 			title="PDF detalhado para controle interno"
 		>
 			<Icon icon="lucide:file-check" />
-			<span class="btn-label">PDF Completo</span>
+			<span class="btn-label">Orçamento Completo</span>
 		</button>
 		<button class="btn-secondary" onclick={limparTudo}>
 			<Icon icon="lucide:trash-2" />
@@ -896,9 +901,9 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 	<div class="form-section">
 		<div class="section-header">
 			<h2>Itens do Orçamento ({itens.length})</h2>
-			<button 
-				class="btn-add-item" 
-				onclick={() => showAddForm = !showAddForm}
+			<button
+				class="btn-add-item"
+				onclick={() => { showAddForm = !showAddForm; if (!showAddForm) limparFormItem(); }}
 			>
 				<Icon icon={showAddForm ? 'lucide:minus' : 'lucide:plus'} />
 				{showAddForm ? 'Cancelar' : 'Novo Item'}
@@ -909,7 +914,7 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 		{#if showAddForm}
 			<div class="add-item-form">
 	<div class="field">
-		<label for="desc-produto">Descrição do Produto *</label>
+		<label for="desc-produto">Produto *</label>
 		<input 
 			type="text" 
 			id="desc-produto"
@@ -981,7 +986,7 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 			<option value="">Selecione...</option>
 			{#each data.materiais as material}
 				<option value={material.id}>
-					{material.nome} (R$ {material.precoMm2.toFixed(6)}/mm²)
+					{material.nome} (R$ {(material.precoMm2 * 1000000).toFixed(2)}/m²)
 				</option>
 			{/each}
 		</select>
@@ -1045,16 +1050,57 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 		</div>
 	{/if}
 	
+	<!-- GASTOS ADICIONAIS DO ITEM -->
+	<div class="gastos-item-section">
+		<div class="section-header-small">
+			<h4>Gastos Adicionais</h4>
+			<button type="button" class="btn-add-small" onclick={() => showGastoFormItem = !showGastoFormItem}>
+				<Icon icon={showGastoFormItem ? 'lucide:minus' : 'lucide:plus'} />
+			</button>
+		</div>
+
+		{#if showGastoFormItem}
+			<div class="gasto-form">
+				<div class="field">
+					<label>Descrição</label>
+					<input type="text" bind:value={descricaoGastoItem} placeholder="Ex: Chaveiro, Embalagem" />
+				</div>
+				<div class="field">
+					<label>Valor (R$)</label>
+					<input type="number" bind:value={valorGastoItem} placeholder="0.00" step="0.01" min="0" />
+				</div>
+				<button type="button" class="btn-primary btn-small" onclick={adicionarGastoItem}>
+					<Icon icon="lucide:plus" />
+					Adicionar
+				</button>
+			</div>
+		{/if}
+
+		{#if itemGastos.length > 0}
+			<div class="gastos-list">
+				{#each itemGastos as gasto}
+					<div class="gasto-item">
+						<span class="gasto-desc">{gasto.descricao}</span>
+						<span class="gasto-valor">R$ {gasto.valor.toFixed(2)}</span>
+						<button type="button" class="btn-remove-small" onclick={() => removerGastoItem(gasto.id)}>
+							<Icon icon="lucide:x" />
+						</button>
+					</div>
+				{/each}
+			</div>
+		{/if}
+	</div>
+
 	{#if valorItemAtual > 0}
 		<div class="valor-preview">
 			<Icon icon="lucide:info" />
 			<span>Valor do item: <strong>R$ {valorItemAtual.toFixed(2)}</strong></span>
 		</div>
 	{/if}
-	
+
 	<button class="btn-primary" onclick={adicionarItem}>
-		<Icon icon="lucide:plus" />
-		Adicionar Item
+		<Icon icon={itemEditandoId ? 'lucide:check' : 'lucide:plus'} />
+		{itemEditandoId ? 'Salvar Alterações' : 'Adicionar Item'}
 	</button>
 </div>
 		{/if}
@@ -1079,8 +1125,15 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 									Pintada
 								</span>
 							{/if}
-							<button 
-								class="btn-remove" 
+							<button
+								class="btn-edit"
+								onclick={() => editarItem(item.id)}
+								title="Editar item"
+							>
+								<Icon icon="lucide:pencil" />
+							</button>
+							<button
+								class="btn-remove"
 								onclick={() => removerItem(item.id)}
 								title="Remover item"
 							>
@@ -1125,8 +1178,18 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 									<span class="detail-total">R$ {item.valorPintura.toFixed(2)}</span>
 								</div>
 							{/if}
+							{#if item.gastosAdicionais && item.gastosAdicionais.length > 0}
+								{#each item.gastosAdicionais as g}
+									<div class="detail-row">
+										<Icon icon="lucide:receipt" />
+										<span>{g.descricao}</span>
+										<span class="detail-value">-</span>
+										<span class="detail-total">R$ {g.valor.toFixed(2)}</span>
+									</div>
+								{/each}
+							{/if}
 						</div>
-						
+
 						<div class="item-footer">
 							<span>Subtotal do item:</span>
 							<span class="item-total">R$ {item.valorTotal.toFixed(2)}</span>
@@ -1154,78 +1217,12 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 	</a>
 </div>
 		
-		<!-- Gastos Adicionais -->
-		<div class="gastos-section">
-			<div class="section-header-small">
-				<h3>Gastos Adicionais</h3>
-				<button 
-					class="btn-add-small" 
-					onclick={() => showGastoForm = !showGastoForm}
-				>
-					<Icon icon={showGastoForm ? 'lucide:minus' : 'lucide:plus'} />
-				</button>
-			</div>
-			
-			{#if showGastoForm}
-				<div class="gasto-form">
-					<div class="field">
-						<label for="desc-gasto">Descrição *</label>
-						<input 
-							type="text" 
-							id="desc-gasto"
-							bind:value={descricaoGasto}
-							placeholder="Ex: Chaveiro"
-						/>
-					</div>
-					<div class="field">
-						<label for="valor-gasto">Valor (R$) *</label>
-						<input 
-							type="number" 
-							id="valor-gasto"
-							bind:value={valorGasto}
-							placeholder="0.00"
-							step="0.01"
-							min="0"
-						/>
-					</div>
-					<button class="btn-primary btn-small" onclick={adicionarGasto}>
-						<Icon icon="lucide:plus" />
-						Adicionar
-					</button>
-				</div>
-			{/if}
-			
-			{#if gastosAdicionais.length > 0}
-				<div class="gastos-list">
-					{#each gastosAdicionais as gasto}
-						<div class="gasto-item">
-							<span class="gasto-desc">{gasto.descricao}</span>
-							<span class="gasto-valor">R$ {gasto.valor.toFixed(2)}</span>
-							<button 
-								class="btn-remove-small" 
-								onclick={() => removerGasto(gasto.id)}
-							>
-								<Icon icon="lucide:x" />
-							</button>
-						</div>
-					{/each}
-				</div>
-			{/if}
-		</div>
-		
 		<!-- Cálculos -->
 		<div class="calc-card">
 			<div class="calc-row">
 				<span>Subtotal ({itens.length} {itens.length === 1 ? 'item' : 'itens'}):</span>
 				<span class="calc-value">R$ {subtotal.toFixed(2)}</span>
 			</div>
-			
-			{#if totalGastosAdicionais > 0}
-				<div class="calc-row">
-					<span>Gastos Adicionais:</span>
-					<span class="calc-value">R$ {totalGastosAdicionais.toFixed(2)}</span>
-				</div>
-			{/if}
 			
 			<div class="calc-row margem">
 				<label for="margem">Margem de Lucro (%):</label>
@@ -1265,7 +1262,7 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 			<div class="preview-content">
 				<p><strong>Cliente:</strong> {clienteSelecionadoId ? data.clientes.find(c => c.id === clienteSelecionadoId)?.nome : '(não selecionado)'}</p>
 				<p><strong>Itens:</strong> {itens.length}</p>
-				<p><strong>Gastos extras:</strong> {gastosAdicionais.length}</p>
+				<p><strong>Gastos extras:</strong> {itens.reduce((sum, i) => sum + (i.gastosAdicionais?.length || 0), 0)}</p>
 				<p><strong>Valor final:</strong> R$ {valorFinal.toFixed(2)}</p>
 			</div>
 		</div>
@@ -1275,13 +1272,12 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 			method="POST" 
 			action="?/criarOrcamento"
 			use:enhance={() => {
-	if (!clienteSelecionadoId) {
-		alert('Selecione um cliente');
-		return () => {};
-	}
-
 				if (itens.length === 0) {
 					alert('Adicione pelo menos 1 item');
+					return () => {};
+				}
+				if (!clienteSelecionadoId && !nomeClientePDF.trim()) {
+					alert('Informe o nome do cliente no campo acima ou selecione um cliente cadastrado');
 					return () => {};
 				}
 				return async ({ result, update }) => {
@@ -1290,17 +1286,18 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 			}}
 		>
 			<input type="hidden" name="clienteId" value={clienteSelecionadoId} />
+			<input type="hidden" name="nomeCliente" value={nomeClientePDF} />
 			<input type="hidden" name="descricao" value={observacoes} />
 			<input type="hidden" name="itensDetalhados" value={gerarItensJSON()} />
 			<input type="hidden" name="subtotal" value={subtotal.toFixed(2)} />
 			<input type="hidden" name="margemLucro" value={margemLucro} />
-			<input type="hidden" name="gastosAdicionais" value={totalGastosAdicionais.toFixed(2)} />
+			<input type="hidden" name="gastosAdicionais" value="0" />
 			<input type="hidden" name="valorFinal" value={valorFinal.toFixed(2)} />
 			
-			<button 
-				type="submit" 
+			<button
+				type="submit"
 				class="btn-primary btn-large"
-				disabled={!clienteSelecionadoId || itens.length === 0}
+				disabled={itens.length === 0 || (!clienteSelecionadoId && !nomeClientePDF.trim())}
 			>
 				<Icon icon="lucide:save" />
 				Salvar Orçamento
@@ -1752,6 +1749,28 @@ textarea {
 	height: 12px;
 }
 
+.btn-edit {
+	background: transparent;
+	border: none;
+	color: #9ca3af;
+	cursor: pointer;
+	padding: 4px;
+	border-radius: 4px;
+	transition: all 0.2s ease;
+	display: flex;
+	align-items: center;
+}
+
+.btn-edit:hover {
+	background: rgba(255, 191, 145, 0.15);
+	color: #ffbf91;
+}
+
+.btn-edit :global(svg) {
+	width: 15px;
+	height: 15px;
+}
+
 .btn-remove {
 	background: transparent;
 	border: none;
@@ -1820,8 +1839,9 @@ textarea {
 	color: #4ade80;
 }
 
+
 /* Gastos Adicionais */
-.gastos-section {
+.gastos-item-section {
 	background: rgba(30, 30, 30, 0.3);
 	border: 1px solid rgba(255, 191, 145, 0.1);
 	border-radius: 8px;
@@ -1834,6 +1854,13 @@ textarea {
 	justify-content: space-between;
 	align-items: center;
 	margin-bottom: 12px;
+}
+
+.section-header-small h4 {
+	font-size: 0.85rem;
+	font-weight: 600;
+	color: #d1d5db;
+	margin: 0;
 }
 
 .btn-add-small {

@@ -7,9 +7,11 @@ datasource db {
 }
 
 model User {
-  id String @id @default(cuid())
-  username String @unique
-  password String
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String
+  role      String   @default("admin")
+  clienteId String?  @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -52,12 +54,13 @@ model Orcamento {
   id              String   @id @default(cuid())
   clienteId        String?
   cliente          Cliente?  @relation(fields: [clienteId], references: [id])
-  descricao       String?  
-  itensDetalhados String?  
-  subtotal        Float   
-  margemLucro     Float    @default(30) 
+  nomeCliente     String?
+  descricao       String?
+  itensDetalhados String?
+  subtotal        Float
+  margemLucro     Float    @default(30)
   gastosAdicionais Float   @default(0)
-  valorFinal      Float    
+  valorFinal      Float
   status          String   @default("Pendente")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -76,4 +79,5 @@ model Pedido {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }
+
 

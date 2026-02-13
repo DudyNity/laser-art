@@ -4,19 +4,26 @@ import type { RequestEvent } from '@sveltejs/kit';
 import { requireAuth } from '$lib/server/auth';
 
 export const load = async ({ locals }: RequestEvent) => {
-    requireAuth(locals);
-    
-    const orcamentos = await prisma.orcamento.findMany({
-        include: {
-            cliente: true  // ← ADICIONE ISSO!
-        },
-        orderBy: { createdAt: 'desc' }
-    });
-    
-    return {
-        user: locals.user,
-        orcamentos
-    };
+    const user = requireAuth(locals);
+
+    const where = user.role === 'cliente' && user.clienteId
+        ? { clienteId: user.clienteId, status: 'Aprovado' }
+        : {};
+
+    const [orcamentos, clientes] = await Promise.all([
+        prisma.orcamento.findMany({
+            where,
+            include: { cliente: true },
+            orderBy: { createdAt: 'desc' }
+        }),
+        prisma.cliente.findMany({
+            where: { ativo: true },
+            orderBy: { nome: 'asc' },
+            select: { id: true, nome: true, telefone: true, email: true }
+        })
+    ]);
+
+    return { user: locals.user, isCliente: user.role === 'cliente', orcamentos, clientes };
 };
 
 
@@ -42,23 +49,23 @@ aprovarOrcamento: async ({ request }: RequestEvent) => {
     if (!orcamento) {
         return fail(404, { error: 'Orçamento não encontrado' });
     }
-    
-    // Validar se o cliente existe
-    if (!orcamento.cliente) {
-        return fail(400, { error: 'Cliente não encontrado no orçamento' });
+
+    const nomeParaPedido = orcamento.cliente?.nome || orcamento.nomeCliente;
+    if (!nomeParaPedido) {
+        return fail(400, { error: 'Vincule um cliente ao orçamento antes de aprovar' });
     }
-    
+
     // 1. Atualiza status do orçamento
     await prisma.orcamento.update({
         where: { id: id.toString() },
         data: { status: 'Aprovado' }
     });
-    
+
     // 2. Cria o pedido automaticamente
     await prisma.pedido.create({
         data: {
             orcamentoId: id.toString(),
-            cliente: orcamento.cliente.nome,  // Agora é seguro
+            cliente: nomeParaPedido,
             valor: orcamento.valorFinal,
             dataEntrega: new Date(dataEntrega.toString()),
             status: 'Pendente'
@@ -85,6 +92,27 @@ aprovarOrcamento: async ({ request }: RequestEvent) => {
         return { success: true };
     },
     
+    // Vincular Cliente ao Orçamento
+    vincularCliente: async ({ request }: RequestEvent) => {
+        const data = await request.formData();
+        const id = data.get('id');
+        const clienteId = data.get('clienteId');
+
+        if (!id) {
+            return fail(400, { error: 'ID inválido' });
+        }
+
+        await prisma.orcamento.update({
+            where: { id: id.toString() },
+            data: {
+                clienteId: clienteId ? clienteId.toString() : null,
+                nomeCliente: clienteId ? null : null
+            }
+        });
+
+        return { success: true };
+    },
+
     // Excluir Orçamento
     excluirOrcamento: async ({ request }: RequestEvent) => {
         const data = await request.formData();

@@ -13,7 +13,8 @@
 		nome: string;
 		telefone: string;
 		email: string;
-	};
+	} | null;
+	nomeCliente: string | null;
 	valorFinal: number;
 	descricao: string | null;
 	itensDetalhados: string | null;
@@ -26,9 +27,18 @@
 };
 
 	
+	type Cliente = {
+		id: string;
+		nome: string;
+		telefone: string;
+		email: string;
+	};
+
 	type PageData = {
 		user: { id: string; username: string };
+		isCliente: boolean;
 		orcamentos: Orcamento[];
+		clientes: Cliente[];
 	};
 	
 	let { data }: { data: PageData } = $props();
@@ -37,6 +47,7 @@
 	let showModalAprovar = $state(false);
 	let orcamentoSelecionado = $state<Orcamento | null>(null);
 	let dataEntrega = $state('');
+	let erroAprovar = $state('');
 	
 	let filteredOrcamentos = $derived(() => {
 		if (statusFilter === 'todos') return data.orcamentos;
@@ -65,6 +76,48 @@
 		showModalAprovar = false;
 		orcamentoSelecionado = null;
 		dataEntrega = '';
+		erroAprovar = '';
+	}
+
+	function getProdutos(orcamento: Orcamento): string {
+		if (!orcamento.itensDetalhados) return orcamento.descricao || '-';
+		try {
+			const detalhes = JSON.parse(orcamento.itensDetalhados);
+			const itens: any[] = detalhes.itens || [];
+			const nomes = itens.map((i: any) => i.descricaoProduto).filter(Boolean);
+			return nomes.length > 0 ? nomes.join(', ') : (orcamento.descricao || '-');
+		} catch {
+			return orcamento.descricao || '-';
+		}
+	}
+
+	let showModalExcluir = $state(false);
+	let orcamentoParaExcluir = $state<Orcamento | null>(null);
+
+	function abrirModalExcluir(orcamento: Orcamento) {
+		orcamentoParaExcluir = orcamento;
+		showModalExcluir = true;
+	}
+
+	function fecharModalExcluir() {
+		showModalExcluir = false;
+		orcamentoParaExcluir = null;
+	}
+
+	let showModalVincular = $state(false);
+	let orcamentoParaVincular = $state<Orcamento | null>(null);
+	let clienteVincularId = $state('');
+
+	function abrirModalVincular(orcamento: Orcamento) {
+		orcamentoParaVincular = orcamento;
+		clienteVincularId = orcamento.cliente?.id || '';
+		showModalVincular = true;
+	}
+
+	function fecharModalVincular() {
+		showModalVincular = false;
+		orcamentoParaVincular = null;
+		clienteVincularId = '';
 	}
 	
 
@@ -73,13 +126,6 @@
 // ==================== PDF SIMPLES (CLIENTE) ====================
 function gerarPDFSimples(orcamento: Orcamento) {
 	try {
-		// Verificar se o cliente existe
-		if (!orcamento.cliente || !orcamento.cliente.nome) {
-			alert('Erro: Orçamento sem cliente vinculado. Não é possível gerar PDF.');
-			console.error('Orçamento sem cliente:', orcamento);
-			return;
-		}
-
 		const doc = new jsPDF();
 		const pageWidth = doc.internal.pageSize.getWidth();
 		const margin = 15;
@@ -88,124 +134,146 @@ function gerarPDFSimples(orcamento: Orcamento) {
 
 		// Parsear itens
 		let itensParaPDF: any[] = [];
+		let gastosParaPDFSimples: any[] = [];
 		if (orcamento.itensDetalhados) {
 			try {
 				const detalhes = JSON.parse(orcamento.itensDetalhados);
 				itensParaPDF = detalhes.itens || [];
+				gastosParaPDFSimples = detalhes.gastosAdicionais || [];
 			} catch (e) {
 				console.error('Erro ao parsear itens:', e);
 			}
 		}
 		
-		// ==================== TÍTULO ====================
-		doc.setFillColor(255, 154, 82);
-		doc.rect(0, 0, pageWidth, 35, 'F');
-		
+		// ==================== CABEÇALHO ====================
+		doc.setFillColor(15, 23, 42);
+		doc.rect(0, 0, pageWidth, 42, 'F');
+		doc.setFillColor(255, 107, 0);
+		doc.rect(0, 39, pageWidth, 4, 'F');
+
 		doc.setTextColor(255, 255, 255);
-		doc.setFontSize(18);
+		doc.setFontSize(22);
 		doc.setFont('helvetica', 'bold');
-		doc.text('ORÇAMENTO - CORTE A LASER', pageWidth / 2, 15, { align: 'center' });
-		
+		doc.text('ORÇAMENTO', pageWidth - margin, 16, { align: 'right' });
 		doc.setFontSize(10);
 		doc.setFont('helvetica', 'normal');
-		doc.text('LaserArt - Soluções em Corte a Laser', pageWidth / 2, 23, { align: 'center' });
-		
+		doc.setTextColor(255, 160, 100);
+		doc.text('CORTE A LASER • LaserArt', pageWidth - margin, 25, { align: 'right' });
 		doc.setFontSize(8);
-		doc.text('Telefone: (47) 99999-9999', pageWidth / 2, 28, { align: 'center' });
-		doc.text('Email: contato@laserart.com', pageWidth / 2, 32, { align: 'center' });
-		
-		y = 45;
-		
-		// ==================== DADOS DO CLIENTE ====================
-		doc.setTextColor(40, 40, 40);
+		doc.setTextColor(160, 180, 220);
+		doc.text('(47) 99999-9999  |  contato@laserart.com', pageWidth - margin, 33, { align: 'right' });
+
+		y = 53;
+
+		// ==================== CAIXA DO CLIENTE ====================
+		const horaFormatada = new Date(orcamento.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+		doc.setFillColor(255, 247, 237);
+		doc.rect(margin, y, pageWidth - (margin * 2), 26, 'F');
+		doc.setFillColor(255, 107, 0);
+		doc.rect(margin, y, 4, 26, 'F');
+
+		doc.setTextColor(255, 107, 0);
+		doc.setFontSize(7);
+		doc.setFont('helvetica', 'bold');
+		doc.text('CLIENTE', margin + 8, y + 7);
+
+		doc.setTextColor(15, 23, 42);
+		doc.setFontSize(12);
+		doc.setFont('helvetica', 'bold');
+		doc.text(orcamento.cliente?.nome || orcamento.nomeCliente || 'Cliente', margin + 8, y + 14);
+
+		doc.setFontSize(8);
+		doc.setFont('helvetica', 'normal');
+		doc.setTextColor(100, 100, 100);
+		doc.text(`Data: ${formatDate(orcamento.createdAt)}   |   Hora: ${horaFormatada}`, margin + 8, y + 21);
+
+		y += 34;
+
+		// ==================== CABEÇALHO DE ITENS ====================
+		doc.setTextColor(255, 107, 0);
 		doc.setFontSize(9);
 		doc.setFont('helvetica', 'bold');
-		
-		doc.text('CLIENTE:', margin, y);
-		doc.setFont('helvetica', 'normal');
-		doc.text(orcamento.cliente.nome, margin + 25, y);
-		
-		y += 7;
-		doc.setFont('helvetica', 'bold');
-		doc.text('DATA:', margin, y);
-		doc.setFont('helvetica', 'normal');
-		doc.text(formatDate(orcamento.createdAt), margin + 25, y);
-		
-		y += 7;
-		doc.setFont('helvetica', 'bold');
-		doc.text('HORA:', margin, y);
-		doc.setFont('helvetica', 'normal');
-		const hora = new Date(orcamento.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-		doc.text(hora, margin + 25, y);
-		
-		y += 12;
-		
+		doc.text('ITENS DO ORÇAMENTO', margin + 4, y + 6);
+		y += 14;
+
 		// ==================== ITENS ====================
 		itensParaPDF.forEach((item: any, index: number) => {
-			doc.setDrawColor(200, 200, 200);
-			doc.setLineWidth(0.3);
-			doc.line(margin, y, pageWidth - margin, y);
-			
-			y += 7;
-			
+			// Nome do produto com fundo cinza e acento laranja
+			doc.setFillColor(245, 247, 250);
+			doc.rect(margin, y, pageWidth - (margin * 2), 9, 'F');
+			doc.setFillColor(255, 107, 0);
+			doc.rect(margin, y, 3, 9, 'F');
+
 			doc.setFontSize(10);
 			doc.setFont('helvetica', 'bold');
-			doc.setTextColor(60, 60, 60);
-			doc.text(`Descrição: ${item.descricaoProduto || 'Item'}`, margin, y);
-			
-			y += 7;
-			doc.setFontSize(9);
+			doc.setTextColor(15, 23, 42);
+			doc.text(String(item.descricaoProduto || 'Item'), margin + 6, y + 6);
+			doc.setFontSize(8);
+			doc.setFont('helvetica', 'normal');
+			doc.setTextColor(150, 150, 150);
+			doc.text(`#${index + 1}`, pageWidth - margin - 3, y + 6, { align: 'right' });
+
+			y += 16;
+
+			doc.setFontSize(8.5);
 			doc.setFont('helvetica', 'normal');
 			doc.setTextColor(80, 80, 80);
 			const qtd = Number(item.quantidade || 1);
-			doc.text(`Quantidade: ${qtd} ${qtd === 1 ? 'unidade' : 'unidades'}`, margin, y);
-			
-			y += 6;
-			doc.text(`Material: ${item.materialNome || 'N/A'}`, margin, y);
-			
-			y += 10;
-			doc.setFontSize(10);
-			doc.setFont('helvetica', 'bold');
-			doc.setTextColor(40, 40, 40);
-			const valorUnitario = Number(item.valorTotal || 0) / qtd;
-			doc.text('VALOR UNITÁRIO', margin, y);
-			doc.text(`R$ ${valorUnitario.toFixed(2)}`, pageWidth - margin, y, { align: 'right' });
-
+			doc.text(`Qtd: ${qtd} ${qtd === 1 ? 'unidade' : 'unidades'}   |   Material: ${item.materialNome || 'N/A'}`, margin + 3, y);
 			y += 7;
-			doc.text('VALOR TOTAL', margin, y);
-			doc.text(`R$ ${Number(item.valorTotal || 0).toFixed(2)}`, pageWidth - margin, y, { align: 'right' });
-			
-			y += 12;
-		});
-		
-		// ==================== TOTAL GERAL ====================
-		if (itensParaPDF.length > 1) {
-			doc.setDrawColor(255, 154, 82);
-			doc.setLineWidth(0.5);
-			doc.line(margin, y, pageWidth - margin, y);
-			
-			y += 8;
-			
-			doc.setFontSize(12);
+
+			if (item.pintada && item.valorPintura > 0) {
+				doc.text(`Pintura: R$ ${Number(item.valorPintura).toFixed(2)}`, margin + 3, y);
+				y += 6;
+			}
+
+			const gastosPorItem: any[] = item.gastosAdicionais || [];
+			gastosPorItem.forEach((g: any) => {
+				doc.text(`${String(g.descricao || 'Gasto')}: R$ ${Number(g.valor || 0).toFixed(2)}`, margin + 3, y);
+				y += 6;
+			});
+
+			const margem = orcamento.margemLucro / 100;
+			const valorUnitario = (Number(item.valorTotal || 0) / qtd) * (1 + margem);
+			const valorTotalItem = Number(item.valorTotal || 0) * (1 + margem);
+
+			doc.setFillColor(255, 250, 245);
+			doc.rect(margin, y, pageWidth - (margin * 2), 7, 'F');
+			doc.setFontSize(8.5);
+			doc.setFont('helvetica', 'normal');
+			doc.setTextColor(80, 80, 80);
+			doc.text('Valor unitário', margin + 3, y + 5);
 			doc.setFont('helvetica', 'bold');
-			doc.setTextColor(255, 154, 82);
-			doc.text('VALOR TOTAL GERAL', margin, y);
-			doc.text(`R$ ${orcamento.valorFinal.toFixed(2)}`, pageWidth - margin, y, { align: 'right' });
-		}
-		
-		y += 12;
-		
-		// ==================== PREVISÃO DE ENTREGA ====================
-		const dataEntrega = new Date();
-		dataEntrega.setDate(dataEntrega.getDate() + 7);
-		
-		doc.setFontSize(9);
+			doc.setTextColor(15, 23, 42);
+			doc.text(`R$ ${valorUnitario.toFixed(2)}`, pageWidth - margin - 3, y + 5, { align: 'right' });
+			y += 8;
+
+			doc.setFontSize(9);
+			doc.setFont('helvetica', 'bold');
+			doc.setTextColor(255, 107, 0);
+			doc.text('VALOR TOTAL DO ITEM', margin + 3, y + 5.5);
+			doc.text(`R$ ${valorTotalItem.toFixed(2)}`, pageWidth - margin - 3, y + 5.5, { align: 'right' });
+			y += 14;
+		});
+
+		// ==================== TOTAL GERAL ====================
+		doc.setTextColor(5, 150, 105);
+		doc.setFontSize(12);
+		doc.setFont('helvetica', 'bold');
+		doc.text('VALOR TOTAL GERAL', margin + 5, y + 10);
+		doc.text(`R$ ${orcamento.valorFinal.toFixed(2)}`, pageWidth - margin - 5, y + 10, { align: 'right' });
+
+		y += 22;
+
+		// ==================== RODAPÉ ====================
+		doc.setFontSize(8);
 		doc.setFont('helvetica', 'italic');
-		doc.setTextColor(100, 100, 100);
-		doc.text(`Previsão de entrega: ${dataEntrega.toLocaleDateString('pt-BR')}`, margin, y);
-		
+		doc.setTextColor(130, 130, 130);
+		doc.text('Orçamento válido por 7 dias', pageWidth / 2, y, { align: 'center' });
+
 		// ==================== SALVAR ====================
-		doc.save(`orcamento-simples-${orcamento.cliente.nome.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`);
+		doc.save(`orcamento-${(orcamento.cliente?.nome || orcamento.nomeCliente || 'cliente').replace(/[^a-zA-Z0-9]/g, '-')}.pdf`);
 		
 		console.log('✅ PDF Simples gerado!');
 	} catch (error) {
@@ -217,13 +285,6 @@ function gerarPDFSimples(orcamento: Orcamento) {
 // ==================== PDF COMPLETO (CONTROLE INTERNO) ====================
 function gerarPDFCompleto(orcamento: Orcamento) {
 	try {
-		// Verificar se o cliente existe
-		if (!orcamento.cliente || !orcamento.cliente.nome) {
-			alert('Erro: Orçamento sem cliente vinculado. Não é possível gerar PDF.');
-			console.error('Orçamento sem cliente:', orcamento);
-			return;
-		}
-
 		const doc = new jsPDF();
 		const pageWidth = doc.internal.pageSize.getWidth();
 		const margin = 15;
@@ -244,202 +305,201 @@ function gerarPDFCompleto(orcamento: Orcamento) {
 			}
 		}
 		
-		// ==================== TÍTULO ====================
-		doc.setFillColor(255, 154, 82);
-		doc.rect(0, 0, pageWidth, 35, 'F');
-		
+		// ==================== CABEÇALHO ====================
+		doc.setFillColor(15, 23, 42);
+		doc.rect(0, 0, pageWidth, 42, 'F');
+		doc.setFillColor(255, 107, 0);
+		doc.rect(0, 39, pageWidth, 4, 'F');
+
 		doc.setTextColor(255, 255, 255);
-		doc.setFontSize(16);
+		doc.setFontSize(20);
 		doc.setFont('helvetica', 'bold');
-		doc.text('ORÇAMENTO DETALHADO - CORTE A LASER', pageWidth / 2, 15, { align: 'center' });
-		
+		doc.text('ORÇAMENTO COMPLETO', pageWidth - margin, 16, { align: 'right' });
 		doc.setFontSize(10);
 		doc.setFont('helvetica', 'normal');
-		doc.text('LaserArt - Soluções em Corte a Laser', pageWidth / 2, 23, { align: 'center' });
-		
+		doc.setTextColor(255, 160, 100);
+		doc.text('CORTE A LASER • LaserArt', pageWidth - margin, 25, { align: 'right' });
 		doc.setFontSize(8);
-		doc.text('Telefone: (47) 99999-9999', pageWidth / 2, 28, { align: 'center' });
-		doc.text('Email: contato@laserart.com', pageWidth / 2, 32, { align: 'center' });
-		
-		y = 45;
-		
-		// ==================== DADOS DO CLIENTE ====================
-		doc.setTextColor(40, 40, 40);
+		doc.setTextColor(160, 180, 220);
+		doc.text('(47) 99999-9999  |  contato@laserart.com', pageWidth - margin, 33, { align: 'right' });
+
+		y = 53;
+
+		// ==================== CAIXA DO CLIENTE ====================
+		const horaCompletoFormatada = new Date(orcamento.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+		doc.setFillColor(255, 247, 237);
+		doc.rect(margin, y, pageWidth - (margin * 2), 26, 'F');
+		doc.setFillColor(255, 107, 0);
+		doc.rect(margin, y, 4, 26, 'F');
+
+		doc.setTextColor(255, 107, 0);
+		doc.setFontSize(7);
+		doc.setFont('helvetica', 'bold');
+		doc.text('CLIENTE', margin + 8, y + 7);
+
+		doc.setTextColor(15, 23, 42);
+		doc.setFontSize(12);
+		doc.setFont('helvetica', 'bold');
+		doc.text(orcamento.cliente?.nome || orcamento.nomeCliente || 'Cliente', margin + 8, y + 14);
+
+		doc.setFontSize(8);
+		doc.setFont('helvetica', 'normal');
+		doc.setTextColor(100, 100, 100);
+		doc.text(`Data: ${formatDate(orcamento.createdAt)}   |   Hora: ${horaCompletoFormatada}`, margin + 8, y + 21);
+
+		y += 34;
+
+		const pageHeight = doc.internal.pageSize.getHeight();
+		const bottomMargin = 20;
+
+		function checkPage(needed: number) {
+			if (y + needed > pageHeight - bottomMargin) {
+				doc.addPage();
+				y = 20;
+			}
+		}
+
+		// ==================== CABEÇALHO DE ITENS ====================
+		doc.setTextColor(255, 107, 0);
 		doc.setFontSize(9);
 		doc.setFont('helvetica', 'bold');
-		
-		doc.text('CLIENTE:', margin, y);
-		doc.setFont('helvetica', 'normal');
-		doc.text(orcamento.cliente.nome, margin + 25, y);
-		
-		y += 7;
-		doc.setFont('helvetica', 'bold');
-		doc.text('DATA:', margin, y);
-		doc.setFont('helvetica', 'normal');
-		doc.text(formatDate(orcamento.createdAt), margin + 25, y);
-		
-		y += 7;
-		doc.setFont('helvetica', 'bold');
-		doc.text('HORA:', margin, y);
-		doc.setFont('helvetica', 'normal');
-		const hora = new Date(orcamento.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-		doc.text(hora, margin + 25, y);
-		
-		y += 12;
-		
+		doc.text('ITENS DETALHADOS', margin + 4, y + 6);
+		y += 14;
+
 		// ==================== ITENS DETALHADOS ====================
 		itensParaPDF.forEach((item: any, index: number) => {
-			doc.setDrawColor(200, 200, 200);
-			doc.setLineWidth(0.3);
-			doc.line(margin, y, pageWidth - margin, y);
-			
-			y += 7;
-			
+			checkPage(80);
+
+			// Nome do produto
+			doc.setFillColor(245, 247, 250);
+			doc.rect(margin, y, pageWidth - (margin * 2), 9, 'F');
+			doc.setFillColor(255, 107, 0);
+			doc.rect(margin, y, 3, 9, 'F');
+
 			doc.setFontSize(10);
 			doc.setFont('helvetica', 'bold');
-			doc.setTextColor(60, 60, 60);
-			doc.text(`Descrição do Projeto: ${item.descricaoProduto || 'Item'}`, margin, y);
-			
-			y += 10;
-			
+			doc.setTextColor(15, 23, 42);
+			doc.text(String(item.descricaoProduto || 'Item'), margin + 6, y + 6);
+			doc.setFontSize(8);
+			doc.setFont('helvetica', 'normal');
+			doc.setTextColor(150, 150, 150);
+			doc.text(`#${index + 1}`, pageWidth - margin - 3, y + 6, { align: 'right' });
+
+			y += 17;
+
+			checkPage(50);
+
 			// DETALHES TÉCNICOS
-			doc.setFillColor(245, 245, 245);
+			doc.setFillColor(15, 23, 42);
 			doc.rect(margin, y, pageWidth - (margin * 2), 8, 'F');
-			
-			doc.setFontSize(9);
+
+			doc.setFontSize(8.5);
 			doc.setFont('helvetica', 'bold');
-			doc.setTextColor(80, 80, 80);
+			doc.setTextColor(255, 255, 255);
 			doc.text('DETALHES TÉCNICOS', margin + 3, y + 5.5);
-			
-			y += 10;
-			
+
+			y += 15;
+
 			doc.setFontSize(8);
 			doc.setFont('helvetica', 'normal');
 			doc.setTextColor(60, 60, 60);
-			
+
 			doc.text(`Área total`, margin + 3, y);
-			doc.text(`${(item.materialQuantidade || 0).toFixed(4)} m²`, pageWidth - margin - 3, y, { align: 'right' });
-			
+			const areaTotalM2 = (item.areaTotal || 0) / 1_000_000;
+			doc.text(`${areaTotalM2.toFixed(4)} m²`, pageWidth - margin - 3, y, { align: 'right' });
+
 			y += 5;
 			doc.text(`Quantidade`, margin + 3, y);
-			doc.text(`1 unidade`, pageWidth - margin - 3, y, { align: 'right' });
-			
+			const qtdCompleto = Number(item.quantidade || 1);
+			doc.text(`${qtdCompleto} ${qtdCompleto === 1 ? 'unidade' : 'unidades'}`, pageWidth - margin - 3, y, { align: 'right' });
+
 			y += 5;
 			doc.text(`Material`, margin + 3, y);
 			doc.text(item.materialNome || 'N/A', pageWidth - margin - 3, y, { align: 'right' });
-			
+
 			y += 5;
 			doc.text(`Máquina`, margin + 3, y);
 			doc.text(item.maquinaNome || 'N/A', pageWidth - margin - 3, y, { align: 'right' });
-			
+
 			y += 5;
 			doc.text(`Tempo total`, margin + 3, y);
-			doc.text(`${(item.maquinaHoras || 0).toFixed(2)} horas`, pageWidth - margin - 3, y, { align: 'right' });
-			
+			doc.text(`${(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - margin - 3, y, { align: 'right' });
+
 			y += 10;
-			
+
+			checkPage(60);
+
 			// CUSTOS DETALHADOS
-			doc.setFillColor(245, 245, 245);
+			doc.setFillColor(15, 23, 42);
 			doc.rect(margin, y, pageWidth - (margin * 2), 8, 'F');
-			
-			doc.setFontSize(9);
+
+			doc.setFontSize(8.5);
 			doc.setFont('helvetica', 'bold');
-			doc.setTextColor(80, 80, 80);
+			doc.setTextColor(255, 255, 255);
 			doc.text('CUSTOS DETALHADOS', margin + 3, y + 5.5);
 			doc.text('VALOR', pageWidth - margin - 3, y + 5.5, { align: 'right' });
-			
-			y += 10;
-			
+
+			y += 15;
+
 			doc.setFontSize(8);
 			doc.setFont('helvetica', 'normal');
 			doc.setTextColor(60, 60, 60);
-			
+
 			doc.text(`Custo de material`, margin + 3, y);
 			doc.text(`R$ ${(item.materialValor || 0).toFixed(2)}`, pageWidth - margin - 3, y, { align: 'right' });
-			
+
 			y += 5;
 			doc.text(`Custo de máquina`, margin + 3, y);
 			doc.text(`R$ ${(item.maquinaValor || 0).toFixed(2)}`, pageWidth - margin - 3, y, { align: 'right' });
-			
+
 			y += 5;
 			if (item.pintada) {
 				doc.text(`Custos extras (pintura)`, margin + 3, y);
 				doc.text(`R$ ${(item.valorPintura || 0).toFixed(2)}`, pageWidth - margin - 3, y, { align: 'right' });
 				y += 5;
 			}
-			
+
 			doc.setFont('helvetica', 'bold');
 			doc.text(`Custo total`, margin + 3, y);
 			doc.text(`R$ ${(item.valorTotal || 0).toFixed(2)}`, pageWidth - margin - 3, y, { align: 'right' });
-			
+
 			y += 5;
 			doc.text(`Margem de lucro (${orcamento.margemLucro}%)`, margin + 3, y);
 			const margemItem = (item.valorTotal || 0) * (orcamento.margemLucro / 100);
 			doc.text(`R$ ${margemItem.toFixed(2)}`, pageWidth - margin - 3, y, { align: 'right' });
-			
+
 			y += 8;
-			
-			doc.setFontSize(10);
-			doc.setFont('helvetica', 'bold');
-			doc.setTextColor(255, 154, 82);
-			doc.text('VALOR FINAL', margin + 3, y);
+
+			// Valor final do item
 			const valorItemFinal = (item.valorTotal || 0) * (1 + orcamento.margemLucro / 100);
-			doc.text(`R$ ${valorItemFinal.toFixed(2)}`, pageWidth - margin - 3, y, { align: 'right' });
-			
-			y += 12;
-		});
-		
-		// GASTOS ADICIONAIS
-		if (gastosParaPDF.length > 0) {
-			doc.setFillColor(255, 251, 235);
-			doc.rect(margin, y, pageWidth - (margin * 2), 8, 'F');
-			
-			doc.setFontSize(9);
+			doc.setFontSize(9.5);
 			doc.setFont('helvetica', 'bold');
-			doc.setTextColor(180, 83, 9);
-			doc.text('GASTOS ADICIONAIS', margin + 3, y + 5.5);
-			
-			y += 10;
-			
-			doc.setFontSize(8);
-			doc.setFont('helvetica', 'normal');
-			doc.setTextColor(100, 100, 100);
-			
-			gastosParaPDF.forEach((gasto: any) => {
-				doc.text(`• ${gasto.descricao}`, margin + 3, y);
-				doc.text(`R$ ${gasto.valor.toFixed(2)}`, pageWidth - margin - 3, y, { align: 'right' });
-				y += 5;
-			});
-			
-			y += 5;
-		}
-		
+			doc.setTextColor(255, 107, 0);
+			doc.text('VALOR FINAL DO ITEM', margin + 3, y + 6);
+			doc.text(`R$ ${valorItemFinal.toFixed(2)}`, pageWidth - margin - 3, y + 6, { align: 'right' });
+
+			y += 15;
+		});
+
 		// TOTAL GERAL
-		doc.setDrawColor(255, 154, 82);
-		doc.setLineWidth(0.5);
-		doc.line(margin, y, pageWidth - margin, y);
-		
-		y += 8;
-		
+		checkPage(20);
+		doc.setTextColor(5, 150, 105);
 		doc.setFontSize(12);
 		doc.setFont('helvetica', 'bold');
-		doc.setTextColor(255, 154, 82);
-		doc.text('VALOR TOTAL GERAL', margin, y);
-		doc.text(`R$ ${orcamento.valorFinal.toFixed(2)}`, pageWidth - margin, y, { align: 'right' });
-		
-		y += 12;
-		
-		// PREVISÃO DE ENTREGA
-		const dataEntrega = new Date();
-		dataEntrega.setDate(dataEntrega.getDate() + 7);
-		
-		doc.setFontSize(9);
+		doc.text('VALOR TOTAL GERAL', margin + 5, y + 10);
+		doc.text(`R$ ${orcamento.valorFinal.toFixed(2)}`, pageWidth - margin - 5, y + 10, { align: 'right' });
+
+		y += 22;
+
+		// RODAPÉ
+		doc.setFontSize(8);
 		doc.setFont('helvetica', 'italic');
-		doc.setTextColor(100, 100, 100);
-		doc.text(`Previsão de entrega: ${dataEntrega.toLocaleDateString('pt-BR')}`, margin, y);
-		
+		doc.setTextColor(130, 130, 130);
+		doc.text('Orçamento válido por 7 dias', pageWidth / 2, y, { align: 'center' });
+
 		// SALVAR
-		doc.save(`orcamento-completo-${orcamento.cliente.nome.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`);
+		doc.save(`orcamento-completo-${(orcamento.cliente?.nome || orcamento.nomeCliente || 'cliente').replace(/[^a-zA-Z0-9]/g, '-')}.pdf`);
 		
 		console.log('✅ PDF Completo gerado!');
 	} catch (error) {
@@ -457,6 +517,7 @@ function gerarPDFCompleto(orcamento: Orcamento) {
 </div>
 
 <!-- Filtros -->
+{#if !data.isCliente}
 <div class="filters-section">
 	<div class="filter-chips">
 		<button 
@@ -489,6 +550,7 @@ function gerarPDFCompleto(orcamento: Orcamento) {
 		</button>
 	</div>
 </div>
+{/if}
 
 <!-- Tabela de Orçamentos -->
 <div class="table-section">
@@ -498,7 +560,7 @@ function gerarPDFCompleto(orcamento: Orcamento) {
 				<tr>
 					<th>Cliente</th>
 					<th>Valor</th>
-					<th>Descrição</th>
+					<th>Produto</th>
 					<th>Data</th>
 					<th>Status</th>
 					<th>Ações</th>
@@ -507,9 +569,9 @@ function gerarPDFCompleto(orcamento: Orcamento) {
 			<tbody>
 				{#each filteredOrcamentos() as orcamento}
 					<tr>
-						<td class="cliente-cell">{orcamento.cliente?.nome || 'Cliente não informado'}</td>
+						<td class="cliente-cell">{orcamento.cliente?.nome || orcamento.nomeCliente || 'Cliente não informado'}</td>
 						<td class="valor">{formatCurrency(orcamento.valorFinal)}</td>
-						<td class="descricao">{orcamento.descricao || '-'}</td>
+						<td class="descricao">{getProdutos(orcamento)}</td>
 						<td>{formatDate(orcamento.createdAt)}</td>
 						<td>
 							<StatusBadge
@@ -519,16 +581,26 @@ function gerarPDFCompleto(orcamento: Orcamento) {
 						</td>
 						<td>
 	<div class="action-buttons">
+		<!-- PDF SIMPLES - visível para todos -->
+		<button
+			class="btn-icon"
+			onclick={() => gerarPDFSimples(orcamento)}
+			title="Orçamento"
+		>
+			<Icon icon="lucide:file-text" />
+		</button>
+
+		{#if !data.isCliente}
 		{#if orcamento.status === 'Pendente'}
-			<button 
-				class="btn-icon success" 
+			<button
+				class="btn-icon success"
 				onclick={() => abrirModalAprovar(orcamento)}
 				title="Aprovar"
 			>
 				<Icon icon="lucide:check" />
 			</button>
-			<form 
-				method="POST" 
+			<form
+				method="POST"
 				action="?/recusarOrcamento"
 				use:enhance
 				style="display: inline;"
@@ -539,47 +611,34 @@ function gerarPDFCompleto(orcamento: Orcamento) {
 				</button>
 			</form>
 		{/if}
-		
-		<!-- PDF SIMPLES -->
-		<button 
-			class="btn-icon" 
-			onclick={() => gerarPDFSimples(orcamento)}
-			title="PDF Simples (Cliente)"
-		>
-			<Icon icon="lucide:file-text" />
-		</button>
-		
+
 		<!-- PDF COMPLETO -->
-		<button 
-			class="btn-icon" 
+		<button
+			class="btn-icon"
 			onclick={() => gerarPDFCompleto(orcamento)}
-			title="PDF Completo (Interno)"
+			title="Orçamento Completo"
 			style="color: #3b82f6;"
 		>
 			<Icon icon="lucide:file-check" />
 		</button>
-		
-		<button class="btn-icon" title="Visualizar">
-			<Icon icon="lucide:eye" />
-		</button>
-		
-		<form 
-			method="POST" 
-			action="?/excluirOrcamento"
-			use:enhance={() => {
-				return async ({ update }) => {
-					if (confirm('Deseja realmente excluir este orçamento?')) {
-						await update();
-					}
-				};
-			}}
-			style="display: inline;"
+
+		<button
+			class="btn-icon"
+			onclick={() => abrirModalVincular(orcamento)}
+			title="Vincular cliente"
+			style="color: #a78bfa;"
 		>
-			<input type="hidden" name="id" value={orcamento.id} />
-			<button type="submit" class="btn-icon danger" title="Excluir">
-				<Icon icon="lucide:trash-2" />
-			</button>
-		</form>
+			<Icon icon="lucide:user-check" />
+		</button>
+
+		<button
+			class="btn-icon danger"
+			onclick={() => abrirModalExcluir(orcamento)}
+			title="Excluir"
+		>
+			<Icon icon="lucide:trash-2" />
+		</button>
+		{/if}
 	</div>
 </td>
 					</tr>
@@ -623,9 +682,12 @@ function gerarPDFCompleto(orcamento: Orcamento) {
 				method="POST" 
 				action="?/aprovarOrcamento"
 				use:enhance={() => {
+					erroAprovar = '';
 					return async ({ result, update }) => {
 						if (result.type === 'success') {
 							fecharModal();
+						} else if (result.type === 'failure') {
+							erroAprovar = (result.data as any)?.error || 'Erro ao aprovar orçamento';
 						}
 						await update();
 					};
@@ -635,7 +697,7 @@ function gerarPDFCompleto(orcamento: Orcamento) {
 				
 				<div class="info-card">
 					<h3>Informações do Orçamento</h3>
-					<p><strong>Cliente:</strong> {orcamentoSelecionado.cliente.nome}</p>
+					<p><strong>Cliente:</strong> {orcamentoSelecionado.cliente?.nome || orcamentoSelecionado.nomeCliente || 'Não informado'}</p>
 					<p><strong>Valor:</strong> {formatCurrency(orcamentoSelecionado.valorFinal)}</p> <!-- MUDOU AQUI -->
 					{#if orcamentoSelecionado.descricao}
 						<p><strong>Descrição:</strong> {orcamentoSelecionado.descricao}</p>
@@ -653,10 +715,17 @@ function gerarPDFCompleto(orcamento: Orcamento) {
 					/>
 				</div>
 				
-				<div class="alert-info">
-					<Icon icon="lucide:info" />
-					<p>Ao aprovar, um pedido será criado automaticamente com status "Pendente".</p>
-				</div>
+				{#if erroAprovar}
+					<div class="alert-erro">
+						<Icon icon="lucide:alert-circle" />
+						<p>{erroAprovar}</p>
+					</div>
+				{:else}
+					<div class="alert-info">
+						<Icon icon="lucide:info" />
+						<p>Ao aprovar, um pedido será criado automaticamente com status "Pendente".</p>
+					</div>
+				{/if}
 				
 				<div class="modal-footer">
 					<button type="button" class="btn-secondary" onclick={fecharModal}>
@@ -665,6 +734,144 @@ function gerarPDFCompleto(orcamento: Orcamento) {
 					<button type="submit" class="btn-primary">
 						<Icon icon="lucide:check" />
 						Aprovar e Criar Pedido
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+{/if}
+
+<!-- Modal Vincular Cliente -->
+{#if showModalVincular && orcamentoParaVincular}
+	<div
+		class="modal-overlay"
+		onclick={fecharModalVincular}
+		onkeydown={(e) => e.key === 'Escape' && fecharModalVincular()}
+		role="button"
+		tabindex="-1"
+		aria-label="Fechar modal"
+	>
+		<div
+			class="modal-drawer"
+			onclick={(e) => e.stopPropagation()}
+			onkeydown={(e) => e.stopPropagation()}
+			role="dialog"
+			aria-modal="true"
+			tabindex="-1"
+		>
+			<div class="modal-header">
+				<h2>Vincular Cliente</h2>
+				<button class="btn-close" onclick={fecharModalVincular}>
+					<Icon icon="lucide:x" />
+				</button>
+			</div>
+
+			<form
+				class="modal-body"
+				method="POST"
+				action="?/vincularCliente"
+				use:enhance={() => {
+					return async ({ result, update }) => {
+						if (result.type === 'success') {
+							fecharModalVincular();
+						}
+						await update();
+					};
+				}}
+			>
+				<input type="hidden" name="id" value={orcamentoParaVincular.id} />
+
+				<div class="info-card">
+					<h3>Orçamento</h3>
+					<p><strong>Cliente atual:</strong> {orcamentoParaVincular.cliente?.nome || orcamentoParaVincular.nomeCliente || 'Não vinculado'}</p>
+					<p><strong>Valor:</strong> {formatCurrency(orcamentoParaVincular.valorFinal)}</p>
+				</div>
+
+				<div class="field">
+					<label for="clienteVincular">Selecionar Cliente Cadastrado</label>
+					<select id="clienteVincular" name="clienteId" bind:value={clienteVincularId}>
+						<option value="">— Remover vínculo —</option>
+						{#each data.clientes as c}
+							<option value={c.id}>{c.nome} {c.telefone ? `· ${c.telefone}` : ''}</option>
+						{/each}
+					</select>
+				</div>
+
+				{#if clienteVincularId}
+					{@const clienteSel = data.clientes.find(c => c.id === clienteVincularId)}
+					{#if clienteSel}
+						<div class="cliente-preview">
+							<Icon icon="lucide:user-check" />
+							<div>
+								<p class="preview-nome">{clienteSel.nome}</p>
+								{#if clienteSel.email}<p class="preview-info">{clienteSel.email}</p>{/if}
+								{#if clienteSel.telefone}<p class="preview-info">{clienteSel.telefone}</p>{/if}
+							</div>
+						</div>
+					{/if}
+				{/if}
+
+				<div class="modal-footer">
+					<button type="button" class="btn-secondary" onclick={fecharModalVincular}>
+						Cancelar
+					</button>
+					<button type="submit" class="btn-primary">
+						<Icon icon="lucide:link" />
+						Salvar Vínculo
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+{/if}
+
+<!-- Modal Excluir Orçamento -->
+{#if showModalExcluir && orcamentoParaExcluir}
+	<div
+		class="modal-overlay modal-overlay-center"
+		onclick={fecharModalExcluir}
+		onkeydown={(e) => e.key === 'Escape' && fecharModalExcluir()}
+		role="button"
+		tabindex="-1"
+		aria-label="Fechar modal"
+	>
+		<div
+			class="modal-center"
+			onclick={(e) => e.stopPropagation()}
+			onkeydown={(e) => e.stopPropagation()}
+			role="dialog"
+			aria-modal="true"
+			tabindex="-1"
+		>
+			<div class="modal-excluir-icon">
+				<Icon icon="lucide:trash-2" />
+			</div>
+			<h2 class="modal-excluir-title">Excluir Orçamento</h2>
+			<p class="modal-excluir-desc">
+				Tem certeza que deseja excluir o orçamento de
+				<strong>{orcamentoParaExcluir.cliente?.nome || orcamentoParaExcluir.nomeCliente || 'cliente não informado'}</strong>?
+				Esta ação não pode ser desfeita.
+			</p>
+			<form
+				method="POST"
+				action="?/excluirOrcamento"
+				use:enhance={() => {
+					return async ({ result, update }) => {
+						if (result.type === 'success') {
+							fecharModalExcluir();
+						}
+						await update();
+					};
+				}}
+			>
+				<input type="hidden" name="id" value={orcamentoParaExcluir.id} />
+				<div class="modal-excluir-footer">
+					<button type="button" class="btn-secondary" onclick={fecharModalExcluir}>
+						Cancelar
+					</button>
+					<button type="submit" class="btn-danger">
+						<Icon icon="lucide:trash-2" />
+						Excluir
 					</button>
 				</div>
 			</form>
@@ -1000,6 +1207,31 @@ input:focus {
 	line-height: 1.5;
 }
 
+.alert-erro {
+	display: flex;
+	gap: 10px;
+	padding: 12px;
+	background: rgba(239, 68, 68, 0.1);
+	border: 1px solid rgba(239, 68, 68, 0.3);
+	border-radius: 7px;
+	margin-bottom: 20px;
+}
+
+.alert-erro :global(svg) {
+	width: 18px;
+	height: 18px;
+	color: #ef4444;
+	flex-shrink: 0;
+	margin-top: 2px;
+}
+
+.alert-erro p {
+	font-size: 0.85rem;
+	color: #fca5a5;
+	margin: 0;
+	line-height: 1.5;
+}
+
 .modal-footer {
 	display: flex;
 	gap: 10px;
@@ -1045,6 +1277,163 @@ input:focus {
 
 .btn-primary :global(svg),
 .btn-secondary :global(svg) {
+	width: 16px;
+	height: 16px;
+}
+
+/* Select dentro do modal */
+select {
+	width: 100%;
+	padding: 10px 12px;
+	background: rgba(30, 30, 30, 0.8);
+	border: 1px solid rgba(255, 191, 145, 0.2);
+	border-radius: 7px;
+	color: #f9fafb;
+	font-size: 0.9rem;
+	font-family: 'Inter', sans-serif;
+	transition: all 0.2s ease;
+	box-sizing: border-box;
+	cursor: pointer;
+}
+
+select:focus {
+	outline: none;
+	border-color: #ffbf91;
+	background: rgba(40, 40, 40, 0.9);
+	box-shadow: 0 0 0 3px rgba(255, 191, 145, 0.1);
+}
+
+.cliente-preview {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	background: rgba(167, 139, 250, 0.1);
+	border: 1px solid rgba(167, 139, 250, 0.3);
+	border-radius: 8px;
+	padding: 12px;
+	margin-bottom: 20px;
+	color: #a78bfa;
+}
+
+.cliente-preview :global(svg) {
+	width: 20px;
+	height: 20px;
+	flex-shrink: 0;
+	margin-top: 2px;
+}
+
+.preview-nome {
+	font-size: 0.95rem;
+	font-weight: 600;
+	color: #e5e7eb;
+	margin: 0 0 4px 0;
+}
+
+.preview-info {
+	font-size: 0.8rem;
+	color: #9ca3af;
+	margin: 2px 0 0 0;
+}
+
+/* Overlay centralizado para modal de exclusão */
+.modal-overlay-center {
+	align-items: center;
+	justify-content: center;
+}
+
+/* Modal de Exclusão (centralizado) */
+.modal-center {
+	background: #2a2a2a;
+	border: 1px solid rgba(239, 68, 68, 0.3);
+	border-radius: 16px;
+	padding: 32px 28px 24px;
+	max-width: 420px;
+	width: 90%;
+	margin: auto;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	text-align: center;
+	animation: popIn 0.25s ease;
+	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+@keyframes popIn {
+	from {
+		opacity: 0;
+		transform: scale(0.9);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+.modal-excluir-icon {
+	width: 64px;
+	height: 64px;
+	background: rgba(239, 68, 68, 0.15);
+	border: 2px solid rgba(239, 68, 68, 0.4);
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-bottom: 20px;
+	color: #ef4444;
+}
+
+.modal-excluir-icon :global(svg) {
+	width: 28px;
+	height: 28px;
+}
+
+.modal-excluir-title {
+	font-size: 1.2rem;
+	font-weight: 700;
+	color: #f9fafb;
+	margin: 0 0 12px 0;
+}
+
+.modal-excluir-desc {
+	font-size: 0.9rem;
+	color: #9ca3af;
+	margin: 0 0 28px 0;
+	line-height: 1.6;
+}
+
+.modal-excluir-desc strong {
+	color: #e5e7eb;
+}
+
+.modal-excluir-footer {
+	display: flex;
+	gap: 10px;
+	width: 100%;
+}
+
+.btn-danger {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	padding: 10px 16px;
+	border-radius: 7px;
+	font-weight: 600;
+	font-size: 0.9rem;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	border: none;
+	flex: 1;
+	background: linear-gradient(135deg, #ef4444, #dc2626);
+	color: #fff;
+}
+
+.btn-danger:hover {
+	transform: translateY(-1px);
+	box-shadow: 0 4px 14px rgba(239, 68, 68, 0.45);
+}
+
+.btn-danger :global(svg) {
 	width: 16px;
 	height: 16px;
 }

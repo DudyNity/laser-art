@@ -4,43 +4,48 @@ import type { RequestEvent } from '@sveltejs/kit';
 import { requireAuth } from '$lib/server/auth';
 
 export const load = async ({ locals }: RequestEvent) => {
-    requireAuth(locals);
-    
-    // Busca pedidos do banco
+    const user = requireAuth(locals);
+
+    const where = user.role === 'cliente' && user.clienteId
+        ? { orcamento: { clienteId: user.clienteId } }
+        : {};
+
     const pedidos = await prisma.pedido.findMany({
+        where,
+        include: {
+            orcamento: {
+                select: { descricao: true, itensDetalhados: true }
+            }
+        },
         orderBy: { createdAt: 'desc' }
     });
-    
-    return {
-        user: locals.user,
-        pedidos
-    };
+
+    return { user: locals.user, isCliente: user.role === 'cliente', pedidos };
 };
 
 export const actions = {
     // Criar Pedido
     criarPedido: async ({ request }: RequestEvent) => {
         const data = await request.formData();
-        const orcamento = data.get('orcamento');
         const cliente = data.get('cliente');
         const valor = data.get('valor');
         const dataEntrega = data.get('dataEntrega');
         const status = data.get('status');
-        
-        if (!orcamento || !cliente || !valor || !dataEntrega) {
+
+        if (!cliente || !valor || !dataEntrega) {
             return fail(400, { error: 'Preencha todos os campos' });
         }
-        
+
         await prisma.pedido.create({
             data: {
-                orcamento: orcamento.toString(),
+                orcamentoId: '',
                 cliente: cliente.toString(),
                 valor: parseFloat(valor.toString()),
                 dataEntrega: new Date(dataEntrega.toString()),
                 status: status?.toString() || 'Pendente'
             }
         });
-        
+
         return { success: true };
     },
     

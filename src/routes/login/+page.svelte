@@ -28,10 +28,17 @@
             />
         </div>
         
+        <div class="remember-field">
+            <label class="remember-label">
+                <input type="checkbox" name="rememberMe" class="remember-checkbox" />
+                Lembrar de mim
+            </label>
+        </div>
+
         {#if form?.error}
             <p class="error">{form.error}</p>
         {/if}
-        
+
         <button type="submit">Entrar</button>
     </form>
 </div>
@@ -163,6 +170,35 @@ button:hover {
 button:active {
 	transform: translateY(0);
 	box-shadow: 0 4px 12px rgba(255, 154, 82, 0.4);
+}
+
+/* Lembrar de mim */
+.remember-field {
+	width: 100%;
+	margin-bottom: 8px;
+}
+
+.remember-label {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	font-size: 0.9rem;
+	font-weight: 400;
+	color: #b0b0b0;
+	cursor: pointer;
+	user-select: none;
+	text-align: left;
+	margin-bottom: 0;
+}
+
+.remember-checkbox {
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	margin: 0;
+	accent-color: #ff9a52;
+	cursor: pointer;
+	flex-shrink: 0;
 }
 
 /* Erro */
