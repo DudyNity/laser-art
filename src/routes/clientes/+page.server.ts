@@ -29,17 +29,17 @@ export const actions = {
         const observacoes = data.get('observacoes');
         const ativo = data.get('ativo') === 'on';
         
-        if (!nome || !telefone || !email) {
+        if (!nome || !telefone) {
             return fail(400, { error: 'Preencha todos os campos obrigatórios' });
         }
-        
+
         try {
             await prisma.cliente.create({
                 data: {
                     nome: nome.toString(),
                     cpfCnpj: cpfCnpj ? cpfCnpj.toString() : null,
                     telefone: telefone.toString(),
-                    email: email.toString(),
+                    email: email ? email.toString() : null,
                     endereco: endereco ? endereco.toString() : null,
                     observacoes: observacoes ? observacoes.toString() : null,
                     ativo
@@ -65,10 +65,10 @@ export const actions = {
         const observacoes = data.get('observacoes');
         const ativo = data.get('ativo') === 'on';
         
-        if (!id || !nome || !telefone || !email) {
+        if (!id || !nome || !telefone) {
             return fail(400, { error: 'Dados inválidos' });
         }
-        
+
         try {
             await prisma.cliente.update({
                 where: { id: id.toString() },
@@ -76,7 +76,7 @@ export const actions = {
                     nome: nome.toString(),
                     cpfCnpj: cpfCnpj ? cpfCnpj.toString() : null,
                     telefone: telefone.toString(),
-                    email: email.toString(),
+                    email: email ? email.toString() : null,
                     endereco: endereco ? endereco.toString() : null,
                     observacoes: observacoes ? observacoes.toString() : null,
                     ativo

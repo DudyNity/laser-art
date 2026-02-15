@@ -622,6 +622,15 @@ function gerarPDFCompleto(orcamento: Orcamento) {
 			<Icon icon="lucide:file-check" />
 		</button>
 
+		<a
+			class="btn-icon"
+			href="/orcamentos/criar?edit={orcamento.id}"
+			title="Editar"
+			style="color: #fbbf24;"
+		>
+			<Icon icon="lucide:pencil" />
+		</a>
+
 		<button
 			class="btn-icon"
 			onclick={() => abrirModalVincular(orcamento)}
@@ -1030,6 +1039,7 @@ tr:hover td {
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	text-decoration: none;
 }
 
 .btn-icon:hover {

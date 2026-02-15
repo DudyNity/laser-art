@@ -10,7 +10,7 @@
 		nome: string;
 		cpfCnpj: string | null;
 		telefone: string;
-		email: string;
+		email: string | null;
 		endereco: string | null;
 		observacoes: string | null;
 		ativo: boolean;
@@ -42,7 +42,7 @@
 	let filteredClientes = $derived(() => {
 		return data.clientes.filter(c => 
 			c.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-			c.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+			(c.email && c.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
 			(c.cpfCnpj && c.cpfCnpj.includes(searchTerm))
 		);
 	});
@@ -53,7 +53,7 @@
 			nome: cliente.nome,
 			cpfCnpj: cliente.cpfCnpj || '',
 			telefone: cliente.telefone,
-			email: cliente.email,
+			email: cliente.email || '',
 			endereco: cliente.endereco || '',
 			observacoes: cliente.observacoes || '',
 			ativo: cliente.ativo
@@ -78,6 +78,15 @@
 	
 	function formatarTelefone(value: string) {
 		const numbers = value.replace(/\D/g, '');
+		// Com código do país 55: +55 (XX) XXXXX-XXXX ou +55 (XX) XXXX-XXXX
+		if (numbers.startsWith('55') && numbers.length > 11) {
+			const sem55 = numbers.slice(2);
+			if (sem55.length <= 10) {
+				return '+55 ' + sem55.replace(/(\d{2})(\d{4})(\d{0,4})/, '($1) $2-$3');
+			}
+			return '+55 ' + sem55.replace(/(\d{2})(\d{5})(\d{0,4})/, '($1) $2-$3');
+		}
+		// Sem código do país: (XX) XXXXX-XXXX ou (XX) XXXX-XXXX
 		if (numbers.length <= 10) {
 			return numbers.replace(/(\d{2})(\d{4})(\d{0,4})/, '($1) $2-$3');
 		}
@@ -157,15 +166,15 @@
 						name="telefone"
 						value={formData.telefone}
 						oninput={(e) => formData.telefone = formatarTelefone(e.currentTarget.value)}
-						placeholder="(00) 00000-0000"
-						maxlength="15"
+						placeholder="(00) 00000-0000 ou +55"
+						maxlength="19"
 						required
 					/>
 				</div>
 			</div>
 			
 			<div class="field">
-				<label for="email">E-mail *</label>
+				<label for="email">E-mail</label>
 				<input 
 					type="email" 
 					id="email"
@@ -256,10 +265,12 @@
 							<Icon icon="lucide:phone" />
 							<span>{cliente.telefone}</span>
 						</div>
+						{#if cliente.email}
 						<div class="detail-item">
 							<Icon icon="lucide:mail" />
 							<span>{cliente.email}</span>
 						</div>
+						{/if}
 						{#if cliente.endereco}
 							<div class="detail-item">
 								<Icon icon="lucide:map-pin" />

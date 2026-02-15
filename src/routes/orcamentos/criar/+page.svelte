@@ -64,21 +64,54 @@
 		valor: number;
 	};
 	
+	type OrcamentoEditando = {
+		id: string;
+		clienteId: string | null;
+		cliente: Cliente | null;
+		nomeCliente: string | null;
+		descricao: string | null;
+		itensDetalhados: string | null;
+		subtotal: number;
+		margemLucro: number;
+		gastosAdicionais: number;
+		valorFinal: number;
+		status: string;
+	} | null;
+
 	type PageData = {
 	user: { id: string; username: string };
 	maquinas: Maquina[];
 	materiais: Material[];
 	clientes: Cliente[];
+	orcamentoEditando: OrcamentoEditando;
 };
 
-	
+
 	let { data }: { data: PageData } = $props();
-	
+
+	// Modo edição
+	let editando = $derived(!!data.orcamentoEditando);
+	let editId = $derived(data.orcamentoEditando?.id || '');
+
+	// Pré-carregar itens do orçamento sendo editado
+	function carregarItensEditando(): ItemOrcamento[] {
+		if (!data.orcamentoEditando?.itensDetalhados) return [];
+		try {
+			const detalhes = JSON.parse(data.orcamentoEditando.itensDetalhados);
+			return (detalhes.itens || []).map((item: any, i: number) => ({
+				...item,
+				id: item.id || `item-edit-${i}`
+			}));
+		} catch {
+			return [];
+		}
+	}
+
 	// Estado do formulário principal
-	let clienteSelecionadoId = $state('');
-	let nomeClientePDF = $state('');
-	let observacoes = $state('');
-	let itens = $state<ItemOrcamento[]>([]);
+	let clienteSelecionadoId = $state(data.orcamentoEditando?.clienteId || '');
+	let nomeClientePDF = $state(data.orcamentoEditando?.nomeCliente || '');
+	let observacoes = $state(data.orcamentoEditando?.descricao || '');
+	let itens = $state<ItemOrcamento[]>(carregarItensEditando());
 
 	// Estado do item sendo adicionado
 	let descricaoProduto = $state('');
@@ -103,7 +136,7 @@
 
 	// Cálculos
 	let subtotal = $derived(itens.reduce((sum, item) => sum + item.valorTotal, 0));
-	let margemLucro = $state(30);
+	let margemLucro = $state(data.orcamentoEditando?.margemLucro ?? 30);
 	let valorFinal = $derived(subtotal * (1 + margemLucro / 100));
 
 
@@ -861,8 +894,8 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 
 <div class="page-header">
 	<div class="header-content">
-		<Icon icon="lucide:calculator" class="header-icon" />
-		<h1>Criar Orçamento</h1>
+		<Icon icon={editando ? 'lucide:pencil' : 'lucide:calculator'} class="header-icon" />
+		<h1>{editando ? 'Editar Orçamento' : 'Criar Orçamento'}</h1>
 	</div>
 	<div class="header-actions">
 		<input
@@ -1268,9 +1301,9 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 		</div>
 		
 		<!-- Salvar -->
-		<form 
-			method="POST" 
-			action="?/criarOrcamento"
+		<form
+			method="POST"
+			action="?/{editando ? 'editarOrcamento' : 'criarOrcamento'}"
 			use:enhance={() => {
 				if (itens.length === 0) {
 					alert('Adicione pelo menos 1 item');
@@ -1285,6 +1318,9 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 				};
 			}}
 		>
+			{#if editando}
+				<input type="hidden" name="id" value={editId} />
+			{/if}
 			<input type="hidden" name="clienteId" value={clienteSelecionadoId} />
 			<input type="hidden" name="nomeCliente" value={nomeClientePDF} />
 			<input type="hidden" name="descricao" value={observacoes} />
@@ -1293,14 +1329,14 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 			<input type="hidden" name="margemLucro" value={margemLucro} />
 			<input type="hidden" name="gastosAdicionais" value="0" />
 			<input type="hidden" name="valorFinal" value={valorFinal.toFixed(2)} />
-			
+
 			<button
 				type="submit"
 				class="btn-primary btn-large"
 				disabled={itens.length === 0 || (!clienteSelecionadoId && !nomeClientePDF.trim())}
 			>
 				<Icon icon="lucide:save" />
-				Salvar Orçamento
+				{editando ? 'Salvar Alterações' : 'Salvar Orçamento'}
 			</button>
 		</form>
 	</div>
