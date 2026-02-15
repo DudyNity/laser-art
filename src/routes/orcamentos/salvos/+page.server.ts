@@ -10,7 +10,7 @@ export const load = async ({ locals }: RequestEvent) => {
         ? { clienteId: user.clienteId, status: 'Aprovado' }
         : {};
 
-    const [orcamentos, clientes] = await Promise.all([
+    const [orcamentos, clientes, configEmpresa] = await Promise.all([
         prisma.orcamento.findMany({
             where,
             include: { cliente: true },
@@ -20,10 +20,15 @@ export const load = async ({ locals }: RequestEvent) => {
             where: { ativo: true },
             orderBy: { nome: 'asc' },
             select: { id: true, nome: true, telefone: true, email: true }
+        }),
+        prisma.configEmpresa.upsert({
+            where: { id: 'config' },
+            update: {},
+            create: { id: 'config' }
         })
     ]);
 
-    return { user: locals.user, isCliente: user.role === 'cliente', orcamentos, clientes };
+    return { user: locals.user, isCliente: user.role === 'cliente', orcamentos, clientes, configEmpresa };
 };
 
 

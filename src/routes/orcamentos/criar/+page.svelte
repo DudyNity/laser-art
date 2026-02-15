@@ -78,12 +78,21 @@
 		status: string;
 	} | null;
 
+	type ConfigEmpresa = {
+		nome: string;
+		tagline: string;
+		telefone: string;
+		email: string;
+		cnpj: string;
+	};
+
 	type PageData = {
 	user: { id: string; username: string };
 	maquinas: Maquina[];
 	materiais: Material[];
 	clientes: Cliente[];
 	orcamentoEditando: OrcamentoEditando;
+	configEmpresa: ConfigEmpresa;
 };
 
 
@@ -440,10 +449,10 @@ async function gerarPDFSimples(orcamentoData?: any) {
 		doc.setFontSize(10);
 		doc.setFont('helvetica', 'normal');
 		doc.setTextColor(255, 160, 100);
-		doc.text('CORTE A LASER • LaserArt', pageWidth - margin, 25, { align: 'right' });
+		doc.text((data.configEmpresa.tagline ? data.configEmpresa.tagline + ' • ' : '') + data.configEmpresa.nome, pageWidth - margin, 25, { align: 'right' });
 		doc.setFontSize(8);
 		doc.setTextColor(160, 180, 220);
-		doc.text('(47) 99999-9999  |  contato@laserart.com', pageWidth - margin, 33, { align: 'right' });
+		doc.text([data.configEmpresa.telefone, data.configEmpresa.email, data.configEmpresa.cnpj ? 'CNPJ: ' + data.configEmpresa.cnpj : ''].filter(Boolean).join('  |  '), pageWidth - margin, 33, { align: 'right' });
 
 		y = 53;
 
@@ -691,10 +700,10 @@ async function gerarPDFCompleto(orcamentoData?: any) {
 		doc.setFontSize(10);
 		doc.setFont('helvetica', 'normal');
 		doc.setTextColor(255, 160, 100);
-		doc.text('CORTE A LASER • LaserArt', pageWidth - margin, 25, { align: 'right' });
+		doc.text((data.configEmpresa.tagline ? data.configEmpresa.tagline + ' • ' : '') + data.configEmpresa.nome, pageWidth - margin, 25, { align: 'right' });
 		doc.setFontSize(8);
 		doc.setTextColor(160, 180, 220);
-		doc.text('(47) 99999-9999  |  contato@laserart.com', pageWidth - margin, 33, { align: 'right' });
+		doc.text([data.configEmpresa.telefone, data.configEmpresa.email, data.configEmpresa.cnpj ? 'CNPJ: ' + data.configEmpresa.cnpj : ''].filter(Boolean).join('  |  '), pageWidth - margin, 33, { align: 'right' });
 
 		y = 53;
 

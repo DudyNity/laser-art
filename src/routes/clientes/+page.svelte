@@ -175,13 +175,12 @@
 			
 			<div class="field">
 				<label for="email">E-mail</label>
-				<input 
-					type="email" 
+				<input
+					type="email"
 					id="email"
 					name="email"
 					bind:value={formData.email}
 					placeholder="cliente@email.com"
-					required
 				/>
 			</div>
 			

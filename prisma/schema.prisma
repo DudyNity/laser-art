@@ -80,4 +80,14 @@ model Pedido {
   updatedAt    DateTime  @updatedAt
 }
 
+model ConfigEmpresa {
+  id        String   @id @default("config")
+  nome      String   @default("LaserArt")
+  tagline   String   @default("CORTE A LASER")
+  telefone  String   @default("(47) 99999-9999")
+  email     String   @default("contato@laserart.com")
+  cnpj      String   @default("")
+  updatedAt DateTime @updatedAt
+}
+
 

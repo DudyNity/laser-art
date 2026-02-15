@@ -8,7 +8,7 @@ export const load = async ({ locals, url }: RequestEvent) => {
 
     const editId = url.searchParams.get('edit');
 
-    const [maquinas, materiais, clientes] = await Promise.all([
+    const [maquinas, materiais, clientes, configEmpresa] = await Promise.all([
         prisma.maquina.findMany({
             where: { ativa: true },
             orderBy: { nome: 'asc' }
@@ -26,6 +26,11 @@ export const load = async ({ locals, url }: RequestEvent) => {
                 telefone: true,
                 email: true
             }
+        }),
+        prisma.configEmpresa.upsert({
+            where: { id: 'config' },
+            update: {},
+            create: { id: 'config' }
         })
     ]);
 
@@ -42,7 +47,8 @@ export const load = async ({ locals, url }: RequestEvent) => {
         maquinas,
         materiais,
         clientes,
-        orcamentoEditando
+        orcamentoEditando,
+        configEmpresa
     };
 };
 
