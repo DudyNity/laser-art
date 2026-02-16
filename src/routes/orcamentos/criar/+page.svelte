@@ -56,6 +56,7 @@
 
 	// Total
 	valorTotal: number;
+	valorUnitarioManual: number | null;
 };
 	
 	type GastoAdicional = {
@@ -132,6 +133,7 @@
 	let tempoPorPecaMin = $state('');
 	let itemPintado = $state(false);
 	let valorPintura = $state('');
+	let valorUnitarioManual = $state('');
 
 	// Estado gastos adicionais do item atual
 	let itemGastos = $state<GastoAdicional[]>([]);
@@ -146,7 +148,12 @@
 	// Cálculos
 	let subtotal = $derived(itens.reduce((sum, item) => sum + item.valorTotal, 0));
 	let margemLucro = $state(data.orcamentoEditando?.margemLucro ?? 30);
-	let valorFinal = $derived(subtotal * (1 + margemLucro / 100));
+	let valorFinal = $derived(itens.reduce((sum, item) => {
+		if (item.valorUnitarioManual != null && item.valorUnitarioManual > 0) {
+			return sum + item.valorUnitarioManual * item.quantidade;
+		}
+		return sum + item.valorTotal * (1 + margemLucro / 100);
+	}, 0));
 
 
 	function getMaterial(id: string) {
@@ -176,23 +183,23 @@ let tempoTotalHoras = $derived(() => {
 });
 
 
-	function calcularValorItem() {
+	function calcularCustoItem() {
 	const material = getMaterial(materialSelecionadoId);
 	const maquina = getMaquina(maquinaSelecionadaId);
-	
+
 	const l = parseFloat(larguraMm);
 	const a = parseFloat(alturaMm);
 	const qtd = parseInt(quantidade) || 1;
 	const tempo = parseFloat(tempoPorPecaMin);
-	
+
 	if (!material || !maquina || !l || !a || !qtd || !tempo) {
 		return 0;
 	}
-	
+
 	const areaPeca = l * a;
 	const areaT = areaPeca * qtd;
 	const tempoH = (tempo * qtd) / 60;
-	
+
 	const valorMaterial = areaT * material.precoMm2;
 	const valorMaquina = tempoH * maquina.custoHora;
 	const valorPint = itemPintado && valorPintura ? parseFloat(valorPintura) : 0;
@@ -201,7 +208,13 @@ let tempoTotalHoras = $derived(() => {
 	return valorMaterial + valorMaquina + valorPint + totalGastosItem;
 }
 
-	
+	let custoItemAtual = $derived(calcularCustoItem());
+	function calcularValorItem() {
+		const manual = parseFloat(valorUnitarioManual);
+		const qtd = parseInt(quantidade) || 1;
+		if (manual > 0) return manual * qtd;
+		return calcularCustoItem();
+	}
 	let valorItemAtual = $derived(calcularValorItem());
 	
 	function adicionarItem() {
@@ -232,6 +245,11 @@ let tempoTotalHoras = $derived(() => {
 	const valorPint = itemPintado ? parseFloat(valorPintura) : 0;
 	const totalGastosItem = itemGastos.reduce((sum, g) => sum + g.valor, 0);
 
+	const custoTotal = valorMaterial + valorMaquina + valorPint + totalGastosItem;
+	const manualUnit = parseFloat(valorUnitarioManual);
+	const temValorManual = manualUnit > 0;
+	const valorTotalFinal = temValorManual ? manualUnit * qtd : custoTotal;
+
 	const novoItem: ItemOrcamento = {
 		id: `item-${Date.now()}`,
 		descricaoProduto: descricaoProduto,
@@ -251,7 +269,8 @@ let tempoTotalHoras = $derived(() => {
 		pintada: itemPintado,
 		valorPintura: valorPint,
 		gastosAdicionais: [...itemGastos],
-		valorTotal: valorMaterial + valorMaquina + valorPint + totalGastosItem
+		valorTotal: valorTotalFinal,
+		valorUnitarioManual: temValorManual ? manualUnit : null
 	};
 	
 	if (itemEditandoId) {
@@ -293,6 +312,7 @@ let tempoTotalHoras = $derived(() => {
 	tempoPorPecaMin = '';
 	itemPintado = false;
 	valorPintura = '';
+	valorUnitarioManual = '';
 	itemGastos = [];
 	descricaoGastoItem = '';
 	valorGastoItem = '';
@@ -318,6 +338,7 @@ let tempoTotalHoras = $derived(() => {
 		tempoPorPecaMin = String(item.tempoPorPecaMin);
 		itemPintado = item.pintada;
 		valorPintura = item.pintada ? String(item.valorPintura) : '';
+		valorUnitarioManual = item.valorUnitarioManual ? String(item.valorUnitarioManual) : '';
 		itemGastos = [...(item.gastosAdicionais || [])];
 		itemEditandoId = id;
 		showAddForm = true;
@@ -536,8 +557,9 @@ async function gerarPDFSimples(orcamentoData?: any) {
 			});
 
 			const margem = dadosMargemLucroSimples / 100;
-			const valorUnitario = (Number(item.valorTotal || 0) / qtd) * (1 + margem);
-			const valorTotalItem = Number(item.valorTotal || 0) * (1 + margem);
+			const temManual = item.valorUnitarioManual != null && item.valorUnitarioManual > 0;
+			const valorUnitario = temManual ? item.valorUnitarioManual : (Number(item.valorTotal || 0) / qtd) * (1 + margem);
+			const valorTotalItem = temManual ? item.valorUnitarioManual * qtd : Number(item.valorTotal || 0) * (1 + margem);
 
 			// Linha valor unitário
 			doc.setFillColor(255, 250, 245);
@@ -789,16 +811,8 @@ async function gerarPDFCompleto(orcamentoData?: any) {
 doc.text(`${Number(item.larguraMm || 0).toFixed(1)}mm × ${Number(item.alturaMm || 0).toFixed(1)}mm`, pageWidth - margin - 3, y, { align: 'right' });
 
 y += 5;
-doc.text(`Área por peça`, margin + 3, y);
-doc.text(`${Number(item.areaPorPecaMm2 || 0).toLocaleString('pt-BR')} mm²`, pageWidth - margin - 3, y, { align: 'right' });
-
-y += 5;
 doc.text(`Quantidade`, margin + 3, y);
 doc.text(`${Number(item.quantidade || 1)} unidades`, pageWidth - margin - 3, y, { align: 'right' });
-
-y += 5;
-doc.text(`Área total`, margin + 3, y);
-doc.text(`${Number(item.areaTotal || 0).toLocaleString('pt-BR')} mm²`, pageWidth - margin - 3, y, { align: 'right' });
 
 y += 5;
 doc.text(`Material`, margin + 3, y);
@@ -850,19 +864,31 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 				y += 5;
 			}
 			
-			doc.setFont('helvetica', 'bold');
-			doc.text(`Custo total`, margin + 3, y);
-			doc.text(`R$ ${Number(item.valorTotal || 0).toFixed(2)}`, pageWidth - margin - 3, y, { align: 'right' });
-			
-			y += 5;
-			doc.text(`Margem de lucro (${Number(dadosMargemLucro)}%)`, margin + 3, y);
-			const margemItem = Number(item.valorTotal || 0) * (Number(dadosMargemLucro) / 100);
-			doc.text(`R$ ${Number(margemItem).toFixed(2)}`, pageWidth - margin - 3, y, { align: 'right' });
-			
-			y += 8;
+			const temManualCompleto = item.valorUnitarioManual != null && item.valorUnitarioManual > 0;
+			const qtdCompleto2 = Number(item.quantidade || 1);
+
+			if (temManualCompleto) {
+				doc.setFont('helvetica', 'bold');
+				doc.text(`Valor unitário (manual)`, margin + 3, y);
+				doc.text(`R$ ${Number(item.valorUnitarioManual).toFixed(2)}`, pageWidth - margin - 3, y, { align: 'right' });
+				y += 8;
+			} else {
+				doc.setFont('helvetica', 'bold');
+				doc.text(`Custo total`, margin + 3, y);
+				doc.text(`R$ ${Number(item.valorTotal || 0).toFixed(2)}`, pageWidth - margin - 3, y, { align: 'right' });
+
+				y += 5;
+				doc.text(`Margem de lucro (${Number(dadosMargemLucro)}%)`, margin + 3, y);
+				const margemItem = Number(item.valorTotal || 0) * (Number(dadosMargemLucro) / 100);
+				doc.text(`R$ ${Number(margemItem).toFixed(2)}`, pageWidth - margin - 3, y, { align: 'right' });
+
+				y += 8;
+			}
 
 			// Valor final do item
-			const valorItemFinal = Number(item.valorTotal || 0) * (1 + Number(dadosMargemLucro) / 100);
+			const valorItemFinal = temManualCompleto
+				? item.valorUnitarioManual * qtdCompleto2
+				: Number(item.valorTotal || 0) * (1 + Number(dadosMargemLucro) / 100);
 			doc.setFontSize(9.5);
 			doc.setFont('helvetica', 'bold');
 			doc.setTextColor(255, 107, 0);
@@ -994,18 +1020,11 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 		</div>
 	</div>
 	
-	{#if areaPorPeca() > 0}
-		<div class="info-calculada">
-			<Icon icon="lucide:ruler" />
-			<span>Área por peça: <strong>{areaPorPeca().toLocaleString('pt-BR')} mm²</strong></span>
-		</div>
-	{/if}
-	
 	<!-- QUANTIDADE -->
 	<div class="field">
 		<label for="quantidade">Quantidade (unidades) *</label>
-		<input 
-			type="number" 
+		<input
+			type="number"
 			id="quantidade"
 			bind:value={quantidade}
 			placeholder="1"
@@ -1013,13 +1032,6 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 			min="1"
 		/>
 	</div>
-	
-	{#if areaTotal() > 0}
-		<div class="info-calculada">
-			<Icon icon="lucide:maximize-2" />
-			<span>Área total: <strong>{areaTotal().toLocaleString('pt-BR')} mm²</strong></span>
-		</div>
-	{/if}
 	
 	<!-- MATERIAL -->
 	<div class="field">
@@ -1133,10 +1145,23 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 		{/if}
 	</div>
 
+	<!-- VALOR UNITÁRIO MANUAL -->
+	<div class="field valor-unitario-field">
+		<label for="valorUnitarioManual">Valor Unitário (R$) <span class="label-hint">— deixe vazio para calcular automático</span></label>
+		<input
+			type="number"
+			id="valorUnitarioManual"
+			bind:value={valorUnitarioManual}
+			placeholder={custoItemAtual > 0 ? 'Calculado: R$ ' + (custoItemAtual / (parseInt(quantidade) || 1)).toFixed(2) : 'Automático'}
+			step="0.01"
+			min="0"
+		/>
+	</div>
+
 	{#if valorItemAtual > 0}
 		<div class="valor-preview">
 			<Icon icon="lucide:info" />
-			<span>Valor do item: <strong>R$ {valorItemAtual.toFixed(2)}</strong></span>
+			<span>Valor total do item: <strong>R$ {valorItemAtual.toFixed(2)}</strong>{valorUnitarioManual ? ' (manual)' : ''}</span>
 		</div>
 	{/if}
 
@@ -1188,14 +1213,7 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 		<Icon icon="lucide:ruler" />
 		<span>Dimensões</span>
 		<span class="detail-value">{item.larguraMm}×{item.alturaMm}mm</span>
-		<span class="detail-total">{item.areaPorPecaMm2.toLocaleString('pt-BR')} mm²</span>
-	</div>
-	
-	<div class="detail-row">
-		<Icon icon="lucide:package" />
-		<span>Quantidade</span>
-		<span class="detail-value">{item.quantidade} un</span>
-		<span class="detail-total">{item.areaTotal.toLocaleString('pt-BR')} mm²</span>
+		<span class="detail-total">{item.quantidade} un</span>
 	</div>
 	
 	<div class="detail-row">
@@ -1233,7 +1251,11 @@ doc.text(`${Number(item.tempoTotalHoras || 0).toFixed(2)} horas`, pageWidth - ma
 						</div>
 
 						<div class="item-footer">
-							<span>Subtotal do item:</span>
+							{#if item.valorUnitarioManual}
+								<span>Valor unitário: R$ {item.valorUnitarioManual.toFixed(2)} × {item.quantidade}</span>
+							{:else}
+								<span>Subtotal do item:</span>
+							{/if}
 							<span class="item-total">R$ {item.valorTotal.toFixed(2)}</span>
 						</div>
 					</div>
@@ -1636,6 +1658,18 @@ textarea {
 .checkbox-label span {
 	color: #e0e0e0;
 	font-size: 0.9rem;
+}
+
+.label-hint {
+	font-weight: 400;
+	color: #6b7280;
+	font-size: 0.75rem;
+}
+
+.valor-unitario-field {
+	margin-top: 16px;
+	padding-top: 16px;
+	border-top: 1px dashed rgba(255, 191, 145, 0.2);
 }
 
 .valor-preview {

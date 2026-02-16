@@ -244,8 +244,9 @@ function gerarPDFSimples(orcamento: Orcamento) {
 			});
 
 			const margem = orcamento.margemLucro / 100;
-			const valorUnitario = (Number(item.valorTotal || 0) / qtd) * (1 + margem);
-			const valorTotalItem = Number(item.valorTotal || 0) * (1 + margem);
+			const temManual = item.valorUnitarioManual != null && item.valorUnitarioManual > 0;
+			const valorUnitario = temManual ? item.valorUnitarioManual : (Number(item.valorTotal || 0) / qtd) * (1 + margem);
+			const valorTotalItem = temManual ? item.valorUnitarioManual * qtd : Number(item.valorTotal || 0) * (1 + margem);
 
 			doc.setFillColor(255, 250, 245);
 			doc.rect(margin, y, pageWidth - (margin * 2), 7, 'F');
@@ -414,11 +415,6 @@ function gerarPDFCompleto(orcamento: Orcamento) {
 			doc.setFont('helvetica', 'normal');
 			doc.setTextColor(60, 60, 60);
 
-			doc.text(`Área total`, margin + 3, y);
-			const areaTotalM2 = (item.areaTotal || 0) / 1_000_000;
-			doc.text(`${areaTotalM2.toFixed(4)} m²`, pageWidth - margin - 3, y, { align: 'right' });
-
-			y += 5;
 			doc.text(`Quantidade`, margin + 3, y);
 			const qtdCompleto = Number(item.quantidade || 1);
 			doc.text(`${qtdCompleto} ${qtdCompleto === 1 ? 'unidade' : 'unidades'}`, pageWidth - margin - 3, y, { align: 'right' });
@@ -469,19 +465,31 @@ function gerarPDFCompleto(orcamento: Orcamento) {
 				y += 5;
 			}
 
-			doc.setFont('helvetica', 'bold');
-			doc.text(`Custo total`, margin + 3, y);
-			doc.text(`R$ ${(item.valorTotal || 0).toFixed(2)}`, pageWidth - margin - 3, y, { align: 'right' });
+			const temManualCompleto = item.valorUnitarioManual != null && item.valorUnitarioManual > 0;
+			const qtdCompleto2 = Number(item.quantidade || 1);
 
-			y += 5;
-			doc.text(`Margem de lucro (${orcamento.margemLucro}%)`, margin + 3, y);
-			const margemItem = (item.valorTotal || 0) * (orcamento.margemLucro / 100);
-			doc.text(`R$ ${margemItem.toFixed(2)}`, pageWidth - margin - 3, y, { align: 'right' });
+			if (temManualCompleto) {
+				doc.setFont('helvetica', 'bold');
+				doc.text(`Valor unitário (manual)`, margin + 3, y);
+				doc.text(`R$ ${Number(item.valorUnitarioManual).toFixed(2)}`, pageWidth - margin - 3, y, { align: 'right' });
+				y += 8;
+			} else {
+				doc.setFont('helvetica', 'bold');
+				doc.text(`Custo total`, margin + 3, y);
+				doc.text(`R$ ${(item.valorTotal || 0).toFixed(2)}`, pageWidth - margin - 3, y, { align: 'right' });
 
-			y += 8;
+				y += 5;
+				doc.text(`Margem de lucro (${orcamento.margemLucro}%)`, margin + 3, y);
+				const margemItem = (item.valorTotal || 0) * (orcamento.margemLucro / 100);
+				doc.text(`R$ ${margemItem.toFixed(2)}`, pageWidth - margin - 3, y, { align: 'right' });
+
+				y += 8;
+			}
 
 			// Valor final do item
-			const valorItemFinal = (item.valorTotal || 0) * (1 + orcamento.margemLucro / 100);
+			const valorItemFinal = temManualCompleto
+				? item.valorUnitarioManual * qtdCompleto2
+				: (item.valorTotal || 0) * (1 + orcamento.margemLucro / 100);
 			doc.setFontSize(9.5);
 			doc.setFont('helvetica', 'bold');
 			doc.setTextColor(255, 107, 0);
